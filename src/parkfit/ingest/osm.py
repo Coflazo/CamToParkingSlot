@@ -359,3 +359,51 @@ def ingest_pois(
     result.finished_at = utcnow()
     log.info(result.summary())
     return result
+
+
+ROAD_SELECTOR = (
+    'way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|'
+    'living_street|service|road|pedestrian|footway|path|steps|cycleway)$"]'
+)
+
+
+def ingest_roads(
+    adapter: OsmAdapter,
+    *,
+    south: float = 52.33,
+    west: float = 4.82,
+    north: float = 52.41,
+    east: float = 4.97,
+    timeout: int = 180,
+) -> IngestResult:
+    """Build and cache the routable road graph for a bounding box.
+
+    ``out body`` plus a recursed node pass is required: ways carry node references, not
+    coordinates, so without ``>;`` every way would reference nodes we do not have and
+    the graph would come out empty.
+
+    The default box is central Amsterdam. A nationwide graph should come from a
+    Geofabrik extract rather than Overpass, which the OSM project asks not be used for
+    bulk downloads.
+    """
+    from parkfit.routing.graph import GraphBuilder, NativeGraphProvider
+
+    result = IngestResult(source=f"{adapter.meta.name}-Roads")
+    bbox = f"{south},{west},{north},{east}"
+    ql = f"[out:json][timeout:{timeout}];({ROAD_SELECTOR}({bbox}););out body;>;out skel qt;"
+
+    payload = adapter.query(ql)
+    elements = payload.get("elements", [])
+    result.fetched = len(elements)
+
+    graph = GraphBuilder(adapter.settings).build(elements)
+    if not graph.nodes:
+        result.errors.append("graph came out empty; check the bounding box")
+        result.finished_at = utcnow()
+        return result
+
+    path = NativeGraphProvider(adapter.settings).save_graph(graph)
+    result.created = len(graph.nodes)
+    result.finished_at = utcnow()
+    log.info("road graph cached at %s (%d nodes)", path, len(graph.nodes))
+    return result

@@ -200,4 +200,51 @@ inline MinAreaRect min_area_rect(const Ring& poly) {
     return best;
 }
 
+/// Conservative usable dimensions of a bay polygon.
+///
+/// The minimum-area rectangle *encloses* the polygon, which makes it the wrong
+/// measure for a fit decision. Amsterdam bays drawn against a curving kerb are
+/// trapezoids: one real Abidjanweg bay has long sides of 5.48 m and 7.46 m, and the
+/// enclosing rectangle reports 7.46 -- two metres of kerb that do not exist, in the
+/// optimistic direction, for the number that decides whether a car fits.
+///
+/// `area / extent` yields the mean of the parallel sides instead: exact for a true
+/// rectangle, conservative for a trapezoid. `fill_ratio` reports how far the two
+/// measures diverge, which the ranking uses to discount confidence.
+struct BayMeasurement {
+    double length_m{};
+    double width_m{};
+    double max_length_m{};
+    double max_width_m{};
+    double angle_rad{};
+    double fill_ratio{};
+    Point2 centre{};
+};
+
+inline BayMeasurement measure_bay(const Ring& ring) {
+    const MinAreaRect rect = min_area_rect(ring);
+    const double poly_area = area(ring);
+    const double rect_area = rect.length_m * rect.width_m;
+
+    BayMeasurement out;
+    out.max_length_m = rect.length_m;
+    out.max_width_m = rect.width_m;
+    out.angle_rad = rect.angle_rad;
+    out.centre = rect.centre;
+
+    if (rect_area <= 1e-9 || poly_area <= 1e-9) {
+        out.length_m = rect.length_m;
+        out.width_m = rect.width_m;
+        out.fill_ratio = 0.0;
+        return out;
+    }
+
+    const double eff_len = rect.width_m > 1e-9 ? poly_area / rect.width_m : rect.length_m;
+    const double eff_wid = rect.length_m > 1e-9 ? poly_area / rect.length_m : rect.width_m;
+    out.length_m = std::min(eff_len, rect.length_m);
+    out.width_m = std::min(eff_wid, rect.width_m);
+    out.fill_ratio = std::min(1.0, poly_area / rect_area);
+    return out;
+}
+
 }  // namespace parkfit::geo
