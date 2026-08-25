@@ -323,6 +323,44 @@ class ParkingBay(Base, ProvenanceMixin):
     )
 
 
+class PointOfInterest(Base, ProvenanceMixin):
+    """A named place a user might type as a destination.
+
+    This table exists because the official Dutch geocoder cannot answer the question
+    users actually ask. PDOK indexes the address register; searching it for
+    "Rembrandthuis" returns nothing at all, while "Jodenbreestraat 4" returns an exact
+    match. People do not know the address of the museum they are driving to, so the
+    OpenStreetMap point-of-interest layer is indexed here and searched first.
+    """
+
+    __tablename__ = "points_of_interest"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    external_id: Mapped[str] = mapped_column(String(80), index=True)
+
+    name: Mapped[str] = mapped_column(String(300), index=True)
+    #: Lower-cased, punctuation-stripped form used for matching.
+    normalised_name: Mapped[str] = mapped_column(String(300), index=True)
+    category: Mapped[str] = mapped_column(String(60), index=True, default="place")
+
+    lat: Mapped[float] = mapped_column(Float, index=True)
+    lon: Mapped[float] = mapped_column(Float, index=True)
+
+    city: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    street: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    house_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    postcode: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    #: Alternate names (name:en, name:nl, alt_name, short_name) as a JSON array.
+    aliases_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Rough prominence, used to break ties between same-named places.
+    importance: Mapped[float] = mapped_column(Float, default=0.5)
+
+    __table_args__ = (
+        UniqueConstraint("source_name", "external_id", name="uq_poi_source_external"),
+        Index("ix_poi_name_city", "normalised_name", "city"),
+    )
+
+
 class CurbSegment(Base, ProvenanceMixin):
     """A stretch of legally parkable kerb, as a centreline.
 
