@@ -1,0 +1,52 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+dist/
+build/
+
+# ---- C++ / CMake ----
+build/
+cmake-build-*/
+*.obj
+*.lib
+*.pdb
+*.ilk
+*.exp
+*.pyd
+CMakeUserPresets.json
+
+# ---- Vendored third-party (fetched by scripts/fetch_deps.py) ----
+cpp/third_party/*
+!cpp/third_party/.gitkeep
+!cpp/third_party/README.md
+
+# ---- Node / web ----
+node_modules/
+web/dist/
+.vite/
+
+# ---- Large data (never committed; see docs/data_sources) ----
+data/
+!data/.gitkeep
+
+# ---- Local secrets & state ----
+.env
+.env.local
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# ---- Editors / OS ----
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
