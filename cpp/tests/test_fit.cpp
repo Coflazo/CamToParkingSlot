@@ -122,34 +122,43 @@ TEST_CASE("bay: a parallel bay is judged on length with end clearances") {
     CHECK_NEAR(required_gap_length_cm(polo(), Margins{}), 505.3, 1e-9);
 }
 
-TEST_CASE("bay: a narrow bay leaves too little room to open a door") {
-    // The same car in a 2.10 m bay has only 9.9 cm of door clearance. It physically
-    // fits and should still be offered, but the driver deserves the warning.
-    const FitResult r = check_bay(polo(), 580.0, 210.0, BayOrientation::Parallel, Margins{});
+TEST_CASE("bay: a narrow perpendicular bay leaves too little room to open a door") {
+    // Perpendicular is where door clearance bites: there is a car on each side. A 2.12 m
+    // bay leaves 11.9 cm after the 25 cm allowance -- usable, but worth warning about.
+    const FitResult r = check_bay(polo(), 480.0, 212.0, BayOrientation::Perpendicular, Margins{});
     CHECK(r.verdict == Verdict::TightFit);
     CHECK(r.acceptable());
-    CHECK_NEAR(r.min_slack_cm, 9.9, 1e-9);
+    CHECK_NEAR(r.min_slack_cm, 11.9, 1e-9);
+}
+
+TEST_CASE("bay: the same width is roomy in a parallel bay") {
+    // No car beside you: one flank is the pavement, the other the traffic lane. NEN 2443
+    // sets parallel bays at 1.80 to 2.00 m for cars of this width, so 2.10 m is generous.
+    const FitResult r = check_bay(polo(), 580.0, 210.0, BayOrientation::Parallel, Margins{});
+    CHECK(r.verdict == Verdict::Fits);
+    CHECK_NEAR(r.min_slack_cm, 29.9, 1e-9);
 }
 
 TEST_CASE("bay: the same bay rejects a long van") {
     const FitResult r = check_bay(tall_van(), 580.0, 230.0, BayOrientation::Parallel, Margins{});
-    CHECK(r.verdict == Verdict::DoesNotFit);  // 590 + 100 = 690 needed, 580 available
+    CHECK(r.verdict == Verdict::DoesNotFit);  // 590 + 20 + 20 = 630 needed, 580 available
 }
 
 TEST_CASE("bay: orientation changes the verdict for the same rectangle") {
-    // A 4.8 m x 2.4 m bay. Read as perpendicular the Polo fits (405.3 + 60 = 465.3);
-    // read as parallel it cannot, because swinging in needs 405.3 + 50 + 50 = 505.3.
+    // A 4.40 m x 2.50 m bay: short and wide. Perpendicular needs 405.3 + 30 = 435.3 and
+    // fits; parallel needs 405.3 + 20 + 20 = 445.3 and does not. The two layouts trade
+    // length against width, so the same rectangle genuinely answers differently.
     const FitResult perp =
-        check_bay(polo(), 480.0, 240.0, BayOrientation::Perpendicular, Margins{});
-    const FitResult para = check_bay(polo(), 480.0, 240.0, BayOrientation::Parallel, Margins{});
+        check_bay(polo(), 440.0, 250.0, BayOrientation::Perpendicular, Margins{});
+    const FitResult para = check_bay(polo(), 440.0, 250.0, BayOrientation::Parallel, Margins{});
     CHECK(perp.acceptable());
     CHECK(para.verdict == Verdict::DoesNotFit);
 }
 
 TEST_CASE("bay: unknown orientation is never more permissive than a known one") {
-    // 4.8 m bay: perpendicular would pass, parallel would not. With the orientation
+    // 4.40 m bay: perpendicular would pass, parallel would not. With the orientation
     // unknown we must land on the stricter reading and reject.
-    const FitResult unk = check_bay(polo(), 480.0, 240.0, BayOrientation::Unknown, Margins{});
+    const FitResult unk = check_bay(polo(), 440.0, 250.0, BayOrientation::Unknown, Margins{});
     CHECK(!unk.acceptable());
     // A violated hard constraint is definitive, so it outranks "we were unsure about
     // the layout" -- an unknown orientation must never soften a physical rejection.
@@ -163,17 +172,18 @@ TEST_CASE("bay: unknown orientation is never more permissive than a known one") 
 }
 
 TEST_CASE("bay: unknown orientation that clears both readings is merely unverified") {
-    // 6.0 m x 2.4 m clears the parallel reading (505.3) and the perpendicular one
-    // (465.3) alike. Nothing is violated, so the only reservation left is that we do
+    // 6.0 m x 2.4 m clears the parallel reading (445.3) and the perpendicular one
+    // (435.3) alike. Nothing is violated, so the only reservation left is that we do
     // not know how the bay is laid out.
     const FitResult unk = check_bay(polo(), 600.0, 240.0, BayOrientation::Unknown, Margins{});
     CHECK(unk.verdict == Verdict::Unverified);
     CHECK(unk.unverified_dimensions.size() == 1);
     CHECK(unk.unverified_dimensions[0] == "bay_orientation");
 
-    // The recorded length requirement used the stricter of the two margins.
+    // The recorded requirements took the stricter of the two readings in each axis.
     for (const auto& reason : unk.reasons) {
-        if (reason.constraint == "length") CHECK_NEAR(reason.required_cm, 505.3, 1e-9);
+        if (reason.constraint == "length") CHECK_NEAR(reason.required_cm, 445.3, 1e-9);
+        if (reason.constraint == "width") CHECK_NEAR(reason.required_cm, 200.1, 1e-9);
     }
 }
 
@@ -225,12 +235,12 @@ TEST_CASE("margins: clearances cannot be lowered past their safety floors") {
 
 TEST_CASE("margins: a nervous driver can ask for more room and gets fewer results") {
     Vehicle v = polo();
-    // 5.20 m bay: 405.3 + 50 + 50 = 505.3 required, so 14.7 cm of slack -- a tight fit.
-    const FitResult relaxed = check_bay(v, 520.0, 220.0, BayOrientation::Parallel, Margins{});
+    // 4.70 m bay: 405.3 + 20 + 20 = 445.3 required, so 24.7 cm of slack.
+    const FitResult relaxed = check_bay(v, 470.0, 220.0, BayOrientation::Parallel, Margins{});
     CHECK(relaxed.acceptable());
 
     v.extra_parallel_clearance_cm = 60.0;  // wants 60 cm more than the default
-    const FitResult cautious = check_bay(v, 520.0, 220.0, BayOrientation::Parallel, Margins{});
+    const FitResult cautious = check_bay(v, 470.0, 220.0, BayOrientation::Parallel, Margins{});
     CHECK(cautious.verdict == Verdict::DoesNotFit);
 }
 
