@@ -55,13 +55,35 @@ struct Margins {
     /// Compared against mirror width, because a wall does not yield.
     double lateral_total_cm{40.0};
 
-    /// Clearance across a painted bay or kerbside strip. Compared against bodywork,
-    /// and sized for opening a door rather than for missing a wall. Mirrors overhang
-    /// the line harmlessly, so charging them against bay width would reject most of
-    /// the on-street supply in the Netherlands.
+    /// Clearance across a *perpendicular* painted bay. Compared against bodywork, and
+    /// sized for opening a door between two neighbouring cars. Mirrors overhang the
+    /// line harmlessly, so charging them here would reject most of the on-street
+    /// supply in the Netherlands.
     double bay_lateral_total_cm{25.0};
 
-    double longitudinal_total_cm{60.0};
+    /// Clearance across a *parallel* kerbside bay, where the physics are different:
+    /// there is no car beside you. One flank is the pavement -- opening the passenger
+    /// door onto it is the entire point -- and the other is the traffic lane. NEN 2443
+    /// specifies parallel bays at 1.80 to 2.00 m for cars 1.75 to 1.85 m wide, so the
+    /// standard itself assumes a near-zero lateral margin.
+    ///
+    /// This is not a detail. With the perpendicular allowance applied to parallel bays,
+    /// the engine rejected a Volkswagen Polo from the median Amsterdam kerb bay (1.96 m)
+    /// by four centimetres, and 1846 of 2427 rejections near one destination were width.
+    double parallel_lateral_total_cm{5.0};
+
+    /// End clearance in a perpendicular bay. NEN 2443 sets Haaks depth at 5.00 m
+    /// standard and 4.50 m minimum, with front overhang over a kerb or planting
+    /// strip expressly permitted, so a 4.05 m car in a 4.50 m bay is ordinary
+    /// parking rather than a rejection.
+    double longitudinal_total_cm{30.0};
+
+    /// End clearance in a *marked* parallel bay, which you simply park inside.
+    double bay_parallel_end_cm{20.0};
+
+    /// End clearance for an *open kerb gap* between two parked cars, which has to be
+    /// reversed into. Manoeuvring room, not merely bumper room, which is why it is
+    /// more than twice the marked-bay figure.
     double parallel_front_cm{50.0};
     double parallel_rear_cm{50.0};
 
@@ -74,6 +96,8 @@ struct Margins {
     static constexpr double kMinVerticalCm = 5.0;
     static constexpr double kMinLateralTotalCm = 20.0;
     static constexpr double kMinBayLateralTotalCm = 10.0;
+    static constexpr double kMinParallelLateralTotalCm = 0.0;
+    static constexpr double kMinBayParallelEndCm = 10.0;
     static constexpr double kMinLongitudinalTotalCm = 30.0;
     static constexpr double kMinParallelEndCm = 30.0;
 
@@ -82,6 +106,9 @@ struct Margins {
         m.vertical_cm = std::max(m.vertical_cm, kMinVerticalCm);
         m.lateral_total_cm = std::max(m.lateral_total_cm, kMinLateralTotalCm);
         m.bay_lateral_total_cm = std::max(m.bay_lateral_total_cm, kMinBayLateralTotalCm);
+        m.parallel_lateral_total_cm =
+            std::max(m.parallel_lateral_total_cm, kMinParallelLateralTotalCm);
+        m.bay_parallel_end_cm = std::max(m.bay_parallel_end_cm, kMinBayParallelEndCm);
         m.longitudinal_total_cm = std::max(m.longitudinal_total_cm, kMinLongitudinalTotalCm);
         m.parallel_front_cm = std::max(m.parallel_front_cm, kMinParallelEndCm);
         m.parallel_rear_cm = std::max(m.parallel_rear_cm, kMinParallelEndCm);
@@ -238,11 +265,14 @@ inline FitResult check_bay(const Vehicle& v, double bay_length_cm, double bay_wi
 
     switch (orientation) {
         case BayOrientation::Parallel: {
-            const double ends = m.parallel_front_cm + m.parallel_rear_cm +
+            // A marked bay is parked *into*, not reversed into between two cars, so it
+            // needs bumper room rather than manoeuvring room. An open kerb gap is the
+            // other case and is handled by check_gap with far larger clearances.
+            const double ends = 2.0 * m.bay_parallel_end_cm +
                                 std::max(0.0, v.extra_parallel_clearance_cm);
             detail::record(res.reasons, "length", vl + ends, bay_length_cm, fatal, min_slack, any);
-            detail::record(res.reasons, "width", vw + lat, bay_width_cm, fatal,
-                           min_slack, any);
+            detail::record(res.reasons, "width", vw + m.parallel_lateral_total_cm, bay_width_cm,
+                           fatal, min_slack, any);
             break;
         }
         case BayOrientation::Perpendicular:
@@ -256,11 +286,11 @@ inline FitResult check_bay(const Vehicle& v, double bay_length_cm, double bay_wi
         case BayOrientation::Unknown: {
             // Without orientation we apply the stricter of the two readings, so an
             // unknown layout can never come out more permissive than a known one.
-            const double ends = m.parallel_front_cm + m.parallel_rear_cm;
+            const double ends = 2.0 * m.bay_parallel_end_cm;
             detail::record(res.reasons, "length", vl + std::max(ends, m.longitudinal_total_cm),
                            bay_length_cm, fatal, min_slack, any);
-            detail::record(res.reasons, "width", vw + lat, bay_width_cm, fatal,
-                           min_slack, any);
+            detail::record(res.reasons, "width", vw + std::max(lat, m.parallel_lateral_total_cm),
+                           bay_width_cm, fatal, min_slack, any);
             res.unverified_dimensions.emplace_back("bay_orientation");
             break;
         }
@@ -302,7 +332,7 @@ inline FitResult check_gap(const Vehicle& v, double gap_length_cm, double gap_wi
                    min_slack, any);
     if (gap_width_cm > 0.0) {
         detail::record(res.reasons, "gap_width",
-                       v.effective_body_width_cm() + m.bay_lateral_total_cm, gap_width_cm,
+                       v.effective_body_width_cm() + m.parallel_lateral_total_cm, gap_width_cm,
                        fatal, min_slack, any);
     } else {
         res.unverified_dimensions.emplace_back("gap_width");

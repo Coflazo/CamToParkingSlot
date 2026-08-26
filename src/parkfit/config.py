@@ -63,7 +63,12 @@ class Settings(BaseSettings):
     # --- search ------------------------------------------------------------
     default_search_radius_m: float = 800.0
     max_search_radius_m: float = 5000.0
-    max_candidates: int = 400
+    # Separate budgets per candidate type. Bays outnumber facilities by roughly
+    # 50:1 near a city-centre destination, so one shared cap silently excluded
+    # every garage from the result set.
+    max_facility_candidates: int = 120
+    max_bay_candidates: int = 300
+    max_candidates: int = 420
     max_results: int = 10
     max_results_per_group: int = 2
 
@@ -80,7 +85,8 @@ class Settings(BaseSettings):
     camera_persist_frames: bool = False
 
     # --- auth --------------------------------------------------------------
-    jwt_secret: str = "dev-secret-change-me"
+    # 32 bytes minimum for HS256; a shorter key makes PyJWT warn, correctly.
+    jwt_secret: str = "parkfit-development-secret-key-do-not-use-in-production"
     jwt_algorithm: str = "HS256"
     jwt_expiry_minutes: int = 60 * 24 * 14
 

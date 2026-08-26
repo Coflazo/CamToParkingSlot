@@ -24,6 +24,8 @@ import json
 import logging
 from typing import Any
 
+import httpx
+
 from sqlalchemy import delete, select
 
 from parkfit.geo.rd import rd_in_range, rd_to_wgs84, ring_centroid_rd
@@ -39,6 +41,19 @@ from parkfit.storage.models import (
 from parkfit.storage.session import session_scope
 
 log = logging.getLogger(__name__)
+
+
+class _NullContext:
+    """Yield a caller-supplied session without owning its lifetime."""
+
+    def __init__(self, session):
+        self._session = session
+
+    def __enter__(self):
+        return self._session
+
+    def __exit__(self, *exc):
+        return False
 
 ORIENTATION_BY_TYPE = {
     "langs": BayOrientation.PARALLEL,
@@ -82,6 +97,31 @@ def weekday_mask(days: list[str] | None) -> int:
             mask |= 1 << idx
     return mask or 0b1111111
 
+#: Aspect ratio separating the two layouts when the source omits ``type``.
+#: Measured over 57k Amsterdam bays: parallel bays sit near 3.0 (5.51 m / 1.84 m) and
+#: perpendicular near 1.9 (4.71 m / 2.48 m), so the two populations barely overlap.
+ORIENTATION_RATIO_PARALLEL = 2.4
+ORIENTATION_RATIO_PERPENDICULAR = 2.1
+
+
+def infer_orientation(length_m: float, width_m: float) -> BayOrientation:
+    """Derive the layout from the shape of the bay.
+
+    About a third of Amsterdam bays carry no ``type``, and treating those as unknown
+    meant applying the strictest reading of both layouts, which rejected almost all of
+    them. The geometry itself is unambiguous: a bay three times longer than it is wide
+    is kerb-parallel, and one only twice as long is perpendicular.
+    """
+    if length_m <= 0 or width_m <= 0:
+        return BayOrientation.UNKNOWN
+    ratio = length_m / width_m
+    if ratio >= ORIENTATION_RATIO_PARALLEL:
+        return BayOrientation.PARALLEL
+    if ratio <= ORIENTATION_RATIO_PERPENDICULAR:
+        return BayOrientation.PERPENDICULAR
+    return BayOrientation.UNKNOWN
+
+
 class AmsterdamAdapter(BaseAdapter):
     """Ingests individual parking-bay polygons for Amsterdam."""
 
@@ -100,21 +140,44 @@ class AmsterdamAdapter(BaseAdapter):
 
     PAGE_SIZE = 1000
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._hit_page_ceiling = False
+
     def _pages(self, *, page_size: int, limit: int | None, params: dict[str, Any] | None):
         """Walk the DSO-API pages via their ``next`` link.
 
+        Two upstream behaviours are handled here.
+
         The API refuses ``Accept: application/json`` outright with a 406 and wants
-        ``_format=json`` in the query string instead, which is unusual enough to be
-        worth pinning down here rather than rediscovering at 3 a.m.
+        ``_format=json`` in the query string instead.
+
+        And it enforces a **deep-pagination ceiling**: page 101 returns 403 Forbidden,
+        so plain paging tops out at 100 pages. That is a limit, not a fault, and it is
+        reported as such rather than raised -- see :meth:`run_all` for the partitioned
+        ingest that reaches the whole city.
         """
-        url = self.meta.url
+        url: str | None = self.meta.url
         query: dict[str, Any] | None = {"_pageSize": page_size, "_format": "json"}
         if params:
             query.update(params)
 
         fetched = 0
+        page = 1
         while url:
-            body = self.fetch_json(url, query, headers={"Accept": "*/*"})
+            try:
+                body = self.fetch_json(url, query, headers={"Accept": "*/*"})
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in {400, 403} and page > 1:
+                    self._hit_page_ceiling = True
+                    log.warning(
+                        "Amsterdam: pagination ceiling reached at page %d (%s); "
+                        "partition the query to read further",
+                        page, exc.response.status_code,
+                    )
+                    return
+                raise
+
             rows = (body.get("_embedded") or {}).get("parkeervakken") or []
             if not rows:
                 return
@@ -129,6 +192,7 @@ class AmsterdamAdapter(BaseAdapter):
             # so an empty dict strips the page cursor off the next link and silently
             # re-fetches page 1 forever.
             query = None
+            page += 1
 
     def run(
         self,
@@ -137,16 +201,28 @@ class AmsterdamAdapter(BaseAdapter):
         page_size: int | None = None,
         street: str | None = None,
         neighbourhood: str | None = None,
+        session=None,
     ) -> IngestResult:
+        """Ingest one slice of the dataset.
+
+        Commits every batch. The unit of durability has to be the batch rather than the
+        run: an earlier version held a single transaction across 200,000 rows and four
+        minutes of network I/O, and when the final request failed the rollback discarded
+        every one of them. The logs said "200,000 processed" and the database was empty.
+        """
         result = IngestResult(source=self.meta.name)
         params: dict[str, Any] = {}
         if street:
             params["straatnaam"] = street
         if neighbourhood:
             params["buurtcode"] = neighbourhood
+        self._hit_page_ceiling = False
 
-        with session_scope() as session:
-            self._register_licence(session)
+        owns_session = session is None
+        ctx = session_scope() if owns_session else _NullContext(session)
+        with ctx as session:
+            if owns_session:
+                self._register_licence(session)
             existing = {
                 b.external_id: b
                 for b in session.execute(
@@ -167,15 +243,79 @@ class AmsterdamAdapter(BaseAdapter):
                 if len(batch) >= 500:
                     session.flush()
                     self._sync_restrictions(session, batch)
+                    session.commit()
                     batch.clear()
-                    log.info("Amsterdam: %d bays processed", result.fetched)
+                    if result.fetched % 10000 == 0:
+                        log.info("Amsterdam: %d bays processed", result.fetched)
 
             session.flush()
             self._sync_restrictions(session, batch)
+            session.commit()
 
+        if self._hit_page_ceiling:
+            result.errors.append("stopped at the API pagination ceiling")
         result.finished_at = utcnow()
         log.info(result.summary())
         return result
+
+    def neighbourhoods(self) -> list[str]:
+        """Every buurtcode that has parking bays.
+
+        Read from the bays themselves rather than the gebieden dataset, so the
+        partition covers exactly the rows that exist and nothing else.
+        """
+        codes: set[str] = set()
+        body = self.fetch_json(
+            self.meta.url,
+            {"_pageSize": 1, "_format": "json", "_fields": "buurtcode"},
+            headers={"Accept": "*/*"},
+        )
+        if body:
+            with session_scope() as session:
+                rows = session.execute(
+                    select(ParkingBay.neighbourhood_code)
+                    .where(ParkingBay.neighbourhood_code.is_not(None))
+                    .distinct()
+                ).scalars()
+                codes.update(c for c in rows if c)
+        return sorted(codes)
+
+    def run_all(self, *, page_size: int = 2000) -> IngestResult:
+        """Full-city ingest, partitioned to get past the pagination ceiling.
+
+        A plain paged read stops at 200,000 rows because page 101 is refused. Slicing
+        by buurtcode keeps every slice comfortably inside the ceiling, and the union of
+        the slices is the whole city.
+        """
+        combined = IngestResult(source=f"{self.meta.name}-All")
+
+        first = self.run(page_size=page_size)
+        combined.fetched += first.fetched
+        combined.created += first.created
+        combined.updated += first.updated
+        combined.skipped += first.skipped
+
+        if not first.errors:
+            combined.finished_at = utcnow()
+            return combined
+
+        codes = self.neighbourhoods()
+        log.info("Amsterdam: partitioning the remainder across %d buurtcodes", len(codes))
+        for index, code in enumerate(codes, start=1):
+            part = self.run(page_size=page_size, neighbourhood=code)
+            combined.fetched += part.fetched
+            combined.created += part.created
+            combined.updated += part.updated
+            combined.skipped += part.skipped
+            if index % 25 == 0:
+                log.info(
+                    "Amsterdam: %d/%d buurten, %d bays created so far",
+                    index, len(codes), combined.created,
+                )
+
+        combined.finished_at = utcnow()
+        log.info(combined.summary())
+        return combined
 
     # -- row handling -------------------------------------------------------
     def _build_bay(
@@ -219,6 +359,8 @@ class AmsterdamAdapter(BaseAdapter):
         orientation = ORIENTATION_BY_TYPE.get(
             str(row.get("type") or "").strip().lower(), BayOrientation.UNKNOWN
         )
+        if orientation is BayOrientation.UNKNOWN:
+            orientation = infer_orientation(rect.length_m, rect.width_m)
         bay.orientation = orientation.value
         bay.length_cm = rect.length_cm
         bay.width_cm = rect.width_cm

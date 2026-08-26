@@ -200,10 +200,16 @@ inline ScoredCandidate score(const Candidate& c, const ScoringConfig& cfg) {
     double p = survival_probability(c.p_available_now, c.lambda_per_min, c.eta_min);
     p = apply_anti_herding(p, c.recent_recommendation_count, cfg.herding_decay_per_recommendation);
 
-    // An exact space whose observation has aged past its time-to-live is no longer a
-    // claim we can make. Drop its probability to zero rather than quietly decaying it,
-    // so it can never win a ranking on stale evidence.
-    if (c.is_exact_space && c.observation_age_s > cfg.exact_space_ttl_s) {
+    // An exact space whose *observation* has aged past its time-to-live is no longer a
+    // claim we can make, so its probability drops to zero rather than decaying quietly.
+    //
+    // This applies only to a space we actually observed. A bay that was never observed
+    // is not an expired observation -- it is an unobserved one, and it belongs to the
+    // predictive model, not to the bin. Conflating the two drove every kerb bay to
+    // probability zero, and because an unmetered bay costs nothing, zero-probability
+    // spaces still won the ranking on price alone.
+    const bool has_live_observation = c.evidence >= EvidenceSource::MunicipalSensor;
+    if (c.is_exact_space && has_live_observation && c.observation_age_s > cfg.exact_space_ttl_s) {
         out.expired = true;
         p = 0.0;
     }

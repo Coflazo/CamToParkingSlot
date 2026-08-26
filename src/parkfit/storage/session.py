@@ -35,6 +35,12 @@ def _tune_sqlite(dbapi_connection, _connection_record) -> None:
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.execute("PRAGMA busy_timeout=10000")
     cursor.execute("PRAGMA cache_size=-64000")  # 64 MB page cache
+    # Default autocheckpoint is 1000 pages, about 4 MB. A national ingest leaves a WAL
+    # far larger than that, and the *next* ordinary write inherits the checkpoint --
+    # which is how a 10-row recommendation insert came to take 1.4 seconds, and why
+    # search latency alternated between 140 ms and 4 s for no visible reason.
+    # Checkpointing is moved to maintenance instead; see `checkpoint()`.
+    cursor.execute("PRAGMA wal_autocheckpoint=8000")
     cursor.close()
 
 
@@ -127,3 +133,34 @@ def reset_engines() -> None:
         _sync_engine.dispose()
         _sync_engine = None
     _async_engine = None
+
+
+def checkpoint(*, analyze: bool = False) -> dict[str, int | float]:
+    """Fold the write-ahead log back into the database and reset it.
+
+    Run after an ingest and at startup. Leaving a large WAL in place makes the next
+    unlucky request pay for it: SQLite checkpoints on a commit once the log exceeds the
+    autocheckpoint threshold, so a request that happens to cross it stalls for seconds
+    while every other request is fast. Doing it deliberately, off the request path,
+    turns an unpredictable multi-second stall into one predictable maintenance pause.
+    """
+    import time
+
+    from sqlalchemy import text
+
+    settings = get_settings()
+    if settings.is_postgres:
+        return {"skipped": 1}
+
+    stats: dict[str, int | float] = {}
+    engine = get_sync_engine()
+    started = time.perf_counter()
+    with engine.connect() as connection:
+        connection.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
+        stats["checkpoint_ms"] = round((time.perf_counter() - started) * 1000.0, 1)
+        if analyze:
+            started = time.perf_counter()
+            connection.execute(text("ANALYZE"))
+            connection.commit()
+            stats["analyze_ms"] = round((time.perf_counter() - started) * 1000.0, 1)
+    return stats
