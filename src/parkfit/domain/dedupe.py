@@ -3,7 +3,7 @@
 RDW, OpenStreetMap and NDW all describe overlapping reality. Garage The Bank in
 Amsterdam appears twice: once from RDW as "Garage The Bank (Amsterdam)" with a 210 cm
 barrier and a 110-space capacity, and once from OSM as "The Bank" with neither. Showing
-both is bad in three separate ways -- it wastes result slots, it makes the list look
+both is bad in three separate ways, it wastes result slots, it makes the list look
 padded, and worst of all the OSM copy has no published height, so the same garage shows
 up as both FITS and UNVERIFIED in one result set.
 

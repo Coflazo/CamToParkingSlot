@@ -1,7 +1,7 @@
 """Access to the compiled C++ core, with a graceful fallback.
 
 ``parkfit_native`` is built by CMake into this package directory. It carries the work
-that runs per candidate on every search -- coordinate transforms, the radius sweep over
+that runs per candidate on every search, coordinate transforms, the radius sweep over
 a quarter of a million bays, vehicle fit and the generalised-cost ranking.
 
 The module is genuinely optional. Everything it provides also exists in pure Python

@@ -5,7 +5,7 @@ the NWB road network. It is excellent at what it indexes and completely blind to
 it does not.
 
 That distinction is not academic. Searching PDOK for **"Rembrandthuis"** returns *zero*
-results; searching for "Jodenbreestraat 4, Amsterdam" -- the museum's actual address --
+results; searching for "Jodenbreestraat 4, Amsterdam", the museum's actual address,
 returns an exact match. PDOK indexes addresses, streets, postcodes and place names, not
 points of interest. A parking app whose users type destinations like "Rembrandt House
 Museum", "Vondelpark" or "Ziggo Dome" therefore cannot be built on PDOK alone, which is

@@ -4,7 +4,7 @@
 //
 // Deliberately a plain owned byte buffer rather than an OpenCV Mat. The vision worker
 // needs to build and run without OpenCV present, and everything on the critical path
-// here -- brightness, blur, perceptual hashing, homography -- is arithmetic over a
+// here, brightness, blur, perceptual hashing, homography, is arithmetic over a
 // contiguous buffer. OpenCV earns its place in the training pipeline, not in the
 // production sampler.
 //

@@ -3,7 +3,7 @@
 RDW publishes the national vehicle register openly, and a plate lookup returns make,
 model, length, width, mass and fuel type. It does **not** reliably publish height, which
 is the single most important dimension for parking: a height barrier is the constraint
-that physically stops a vehicle. So the flow is lookup, then *confirm* -- the user is
+that physically stops a vehicle. So the flow is lookup, then *confirm*: the user is
 asked for height, mirror width and anything on the roof, and only confirmed values are
 treated as known.
 

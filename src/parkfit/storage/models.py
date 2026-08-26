@@ -4,7 +4,7 @@ Two decisions shape this file.
 
 **Geometry is stored portably, not in PostGIS types.** Points live as indexed
 ``lat``/``lon`` floats and polygons as GeoJSON text, so the identical schema runs on
-SQLite and PostgreSQL. Radius search does not need a database index at all -- it is
+SQLite and PostgreSQL. Radius search does not need a database index at all; it is
 answered by the C++ spatial grid, which sweeps 250k bays in under 100 microseconds.
 PostGIS therefore becomes an optional accelerator for ad-hoc spatial SQL rather than a
 hard dependency that stops the product running on a laptop.
@@ -389,7 +389,7 @@ class ParkingRestriction(Base, ProvenanceMixin):
 
     Deliberately generic: the same table carries permit zones, disabled-only bays,
     loading windows, market-day closures and temporary roadworks, because a driver
-    experiences all of them identically -- as "you may not park here right now".
+    experiences all of them identically, as "you may not park here right now".
     """
 
     __tablename__ = "parking_restrictions"
@@ -433,8 +433,8 @@ class User(Base):
     prefer_cheapest: Mapped[bool] = mapped_column(Boolean, default=False)
     value_of_time_eur_per_min: Mapped[float] = mapped_column(Float, default=0.20)
 
-    # Opt-in, defaulting to off. Destination history is unusually revealing -- it maps
-    # where somebody goes and when -- so it is never collected by default.
+    # Opt-in, defaulting to off. Destination history is unusually revealing, it maps
+    # where somebody goes and when, so it is never collected by default.
     store_search_history: Mapped[bool] = mapped_column(Boolean, default=False)
 
     vehicles: Mapped[list[Vehicle]] = relationship(

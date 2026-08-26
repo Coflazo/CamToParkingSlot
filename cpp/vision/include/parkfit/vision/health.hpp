@@ -5,7 +5,7 @@
 // A camera that has gone dark, frozen, been rained on or been knocked out of alignment
 // still produces frames. It just produces frames that mean nothing. The single most
 // dangerous failure in this product is telling a driver a space is free because the
-// detector saw an empty patch of a frozen image from four hours ago -- so nothing is
+// detector saw an empty patch of a frozen image from four hours ago, so nothing is
 // published until the frame itself has been shown to be worth believing.
 //
 // Every check here is cheap enough to run on every sampled frame. At one frame per
@@ -53,7 +53,7 @@ inline const char* to_string(FrameHealth h) {
 /// dHash compares each pixel with its right-hand neighbour on a 9x8 thumbnail, so it
 /// encodes *gradients* rather than absolute values. That makes it stable under the slow
 /// exposure drift every outdoor camera shows, while still moving the moment anything in
-/// the scene actually changes -- which is exactly the distinction between "quiet street"
+/// the scene actually changes, which is exactly the distinction between "quiet street"
 /// and "frozen stream".
 using PerceptualHash = std::uint64_t;
 

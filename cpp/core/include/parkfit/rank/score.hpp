@@ -77,7 +77,7 @@ struct ScoringConfig {
     /// What a failed recommendation actually costs the driver.
     ///
     /// Not just the wasted approach: you arrive, discover the space is gone, re-enter
-    /// traffic, re-route, and start searching again -- typically in the busiest part of
+    /// traffic, re-route, and start searching again, typically in the busiest part of
     /// the city, since that is where marginal recommendations live. Observed parking
     /// search times in dense European centres run 8-15 minutes, and a failure puts you
     /// back at the start of that distribution rather than at its mean. Setting this too
@@ -153,8 +153,8 @@ struct ScoredCandidate {
 ///
 /// The exponential is the memoryless assumption: given the space is still free, the
 /// chance it survives another minute does not depend on how long it has already been
-/// free. That is a simplification -- a space free at 03:00 is far more durable than one
-/// free at 17:30 -- which is exactly why lambda is estimated per street segment, per
+/// free. That is a simplification, a space free at 03:00 is far more durable than one
+/// free at 17:30, which is exactly why lambda is estimated per street segment, per
 /// weekday and per 15-minute bucket rather than being a single global constant.
 inline double survival_probability(double p_now, double lambda_per_min, double eta_min) {
     if (p_now <= 0.0) return 0.0;
@@ -204,7 +204,7 @@ inline ScoredCandidate score(const Candidate& c, const ScoringConfig& cfg) {
     // claim we can make, so its probability drops to zero rather than decaying quietly.
     //
     // This applies only to a space we actually observed. A bay that was never observed
-    // is not an expired observation -- it is an unobserved one, and it belongs to the
+    // is not an expired observation; it is an unobserved one, and it belongs to the
     // predictive model, not to the bin. Conflating the two drove every kerb bay to
     // probability zero, and because an unmetered bay costs nothing, zero-probability
     // spaces still won the ranking on price alone.
@@ -245,7 +245,7 @@ inline ScoredCandidate score(const Candidate& c, const ScoringConfig& cfg) {
 /// Score, sort, and spread the results across distinct streets or facilities.
 ///
 /// Diversification is not cosmetic. Three kerb gaps on one street share a single failure
-/// mode -- if the street is actually full, all three are wrong together. Forcing variety
+/// mode: if the street is actually full, all three are wrong together. Forcing variety
 /// into the top slots means the backup option fails independently of the primary.
 inline std::vector<ScoredCandidate> rank_and_diversify(const std::vector<Candidate>& candidates,
                                                        const ScoringConfig& cfg,

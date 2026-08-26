@@ -1,7 +1,7 @@
 """Road-network routing over a cached OpenStreetMap graph.
 
 This exists so the product does not need OSRM. OSRM is excellent, but standing it up
-means Docker, a 1.5 GB extract and a twenty-minute preprocessing step -- and this
+means Docker, a 1.5 GB extract and a twenty-minute preprocessing step, and this
 machine has no running Docker daemon. A parking search needs distances of a few
 kilometres over a few hundred candidates, which a plain bidirectional A* handles in
 milliseconds without any of that.
@@ -9,7 +9,7 @@ milliseconds without any of that.
 The graph is built once from an Overpass extract and cached on disk. Two profiles:
 
 * **car** honours ``oneway``, skips footways and cycleways, and uses per-road-class
-  speeds rather than a single average -- the difference between a canal-side
+  speeds rather than a single average: the difference between a canal-side
   ``residential`` at 15 km/h and an ``a-road`` at 60 km/h dominates any Amsterdam ETA.
 * **foot** ignores ``oneway`` entirely, since pedestrians do not obey it, and includes
   footpaths, bridges and pedestrian squares that a car cannot use.
@@ -210,7 +210,7 @@ class RoadRouter:
         self._grids: dict[Profile, object] = {}
         self._grid_nodes: dict[Profile, list[int]] = {}
 
-    # -- connectivity -------------------------------------------------------
+    # connectivity -------------------------------------------------------
     def components(self, profile: Profile) -> dict[int, int]:
         """Map every routable node to a **strongly** connected component id.
 
@@ -218,7 +218,7 @@ class RoadRouter:
         directed because one-way streets are directed, and in a directed graph
         "reachable from a seed" is not the same relation as "mutually reachable".
         Labelling by forward reachability puts two nodes in the same group when the
-        seed can reach both, even though neither can reach the other -- and Amsterdam,
+        seed can reach both, even though neither can reach the other, and Amsterdam,
         whose canal ring is a dense web of one-ways, is precisely the topology where
         that goes wrong. Snapping both endpoints into such a group produced a pair with
         no path between them, and A* then correctly reported failure.
@@ -299,7 +299,7 @@ class RoadRouter:
             return None
         return max(sizes, key=lambda cid: sizes[cid])
 
-    # -- snapping -----------------------------------------------------------
+    # snapping -----------------------------------------------------------
     def _grid(self, profile: Profile):
         """A spatial index over the routable nodes for this profile."""
         if profile in self._grids:
@@ -335,7 +335,7 @@ class RoadRouter:
             radius = 150.0
             while radius <= 12000.0:
                 # No result cap. Hits come back sorted by distance, so a capped query
-                # returns the same nearest N however far the radius grows -- widening
+                # returns the same nearest N however far the radius grows, widening
                 # the search would never surface a node in the component we need.
                 for hit in grid.query_radius(lat, lon, radius, 0):
                     node_id = node_ids[hit.payload]
@@ -359,14 +359,14 @@ class RoadRouter:
                 best_id = node_id
         return best_id
 
-    # -- one-to-many --------------------------------------------------------
+    # one-to-many --------------------------------------------------------
     def costs_from(
         self, lat: float, lon: float, profile: Profile, *, max_seconds: float = 1500.0
     ) -> tuple[dict[int, tuple[float, float]], int | None]:
         """Dijkstra from one point, labelling every node within a time budget.
 
         This is the shape a parking search actually has. It is not N independent
-        point-to-point queries; it is two one-to-many queries -- drive time from one
+        point-to-point queries; it is two one-to-many queries: drive time from one
         origin to many entrances, and walk time from many exits to one destination.
         Running A* per candidate re-explores the same city several hundred times, at
         roughly 30 ms each.

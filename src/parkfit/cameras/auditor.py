@@ -181,7 +181,7 @@ class SourceAuditor:
     def __exit__(self, *exc):
         self.close()
 
-    # -- crawling -----------------------------------------------------------
+    # crawling -----------------------------------------------------------
     def audit(
         self, sources: tuple[tuple[str, str], ...] = DEFAULT_SOURCES, *, max_per_site: int = 40
     ) -> list[CandidateCamera]:
@@ -286,7 +286,7 @@ class SourceAuditor:
     ) -> CandidateCamera:
         notes = [verdict.detail]
         # ROBOTS_OK is the ceiling the auditor can reach on its own. It says the host
-        # permits crawling and nothing was found forbidding automated use -- which is
+        # permits crawling and nothing was found forbidding automated use, which is
         # enough to justify local research and not enough to justify running a service.
         notes.append(
             "crawlable and no prohibition found; terms not read by a human. "
@@ -303,7 +303,7 @@ class SourceAuditor:
             notes=notes,
         )
 
-    # -- fetching -----------------------------------------------------------
+    # fetching -----------------------------------------------------------
     def _fetch(self, url: str) -> tuple[str, list[str]]:
         """Fetch a page, rendering it when the static markup is clearly incomplete.
 
@@ -342,7 +342,7 @@ class SourceAuditor:
         asks for while it loads.
 
         Observing our own browser making requests, on a page we are permitted to fetch,
-        is reading -- the same information a viewer sees in their developer tools. It is
+        is reading, the same information a viewer sees in their developer tools. It is
         categorically different from defeating an access control, which is why the
         robots check still runs first and a disallowed page is never rendered at all.
         """
@@ -386,7 +386,7 @@ class SourceAuditor:
             log.debug("render failed for %s: %s", url, exc)
             return "", media
 
-    # -- extraction ---------------------------------------------------------
+    # extraction ---------------------------------------------------------
     @staticmethod
     def _merge_streams(declared: list[str], observed: list[str]) -> list[str]:
         """Prefer a manifest the player actually requested over one merely mentioned."""
@@ -542,7 +542,7 @@ def render_audit_report(candidates: list[CandidateCamera]) -> str:
         "client. Their players resolve the manifest at runtime through endpoints that are "
         "frequently the same ones their robots file disallows, and the listing pages carry "
         "no manifest in their markup. Rendering the page and observing the media requests "
-        "it makes -- which is reading, not circumvention -- still yields nothing for these "
+        "it makes, which is reading, not circumvention, still yields nothing for these "
         "sites.",
         "",
         "That is the finding, not a gap to be worked around. It is also why the product "

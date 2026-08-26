@@ -124,7 +124,7 @@ TEST_CASE("bay: a parallel bay is judged on length with end clearances") {
 
 TEST_CASE("bay: a narrow perpendicular bay leaves too little room to open a door") {
     // Perpendicular is where door clearance bites: there is a car on each side. A 2.12 m
-    // bay leaves 11.9 cm after the 25 cm allowance -- usable, but worth warning about.
+    // bay leaves 11.9 cm after the 25 cm allowance, usable, but worth warning about.
     const FitResult r = check_bay(polo(), 480.0, 212.0, BayOrientation::Perpendicular, Margins{});
     CHECK(r.verdict == Verdict::TightFit);
     CHECK(r.acceptable());
@@ -161,7 +161,7 @@ TEST_CASE("bay: unknown orientation is never more permissive than a known one") 
     const FitResult unk = check_bay(polo(), 440.0, 250.0, BayOrientation::Unknown, Margins{});
     CHECK(!unk.acceptable());
     // A violated hard constraint is definitive, so it outranks "we were unsure about
-    // the layout" -- an unknown orientation must never soften a physical rejection.
+    // the layout", an unknown orientation must never soften a physical rejection.
     CHECK(unk.verdict == Verdict::DoesNotFit);
 
     bool length_negative = false;

@@ -41,8 +41,8 @@ struct Detection {
     /// Midpoint of the bottom edge: where the object meets the ground.
     ///
     /// This is the only point of a bounding box that lies on the ground plane, and the
-    /// homography maps the ground plane and nothing else. Projecting the box centre --
-    /// which floats at roughly half the vehicle height -- would place every car several
+    /// homography maps the ground plane and nothing else. Projecting the box centre,
+    /// which floats at roughly half the vehicle height, would place every car several
     /// metres further from the camera than it is, and the error grows with distance.
     [[nodiscard]] Point2d ground_contact() const { return Point2d{(x1 + x2) * 0.5, y2}; }
 

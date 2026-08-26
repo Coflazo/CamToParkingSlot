@@ -6,7 +6,7 @@ individual parking bay* as an exact polygon in RD New, tagged with its layout
 code, and its time regimes.
 
 That changes what computer vision has to do. Without it, a camera would have to answer
-"where is a legal space and how long is it" -- the research-grade problem. With it,
+"where is a legal space and how long is it", the research-grade problem. With it,
 geometry is a solved data problem and vision is left with the tractable question:
 *is this known bay occupied right now?*
 
@@ -157,7 +157,7 @@ class AmsterdamAdapter(BaseAdapter):
 
         And it enforces a **deep-pagination ceiling**: page 101 returns 403 Forbidden,
         so plain paging tops out at 100 pages. That is a limit, not a fault, and it is
-        reported as such rather than raised -- see :meth:`run_all` for the partitioned
+        reported as such rather than raised, see :meth:`run_all` for the partitioned
         ingest that reaches the whole city.
         """
         url: str | None = self.meta.url
@@ -323,7 +323,7 @@ class AmsterdamAdapter(BaseAdapter):
         log.info(combined.summary())
         return combined
 
-    # -- row handling -------------------------------------------------------
+    # row handling -------------------------------------------------------
     def _build_bay(
         self, row: dict[str, Any], existing: dict[str, ParkingBay], result: IngestResult
     ) -> tuple[ParkingBay | None, list[dict]]:

@@ -1,4 +1,4 @@
-# Data Protection Impact Assessment — template
+# Data Protection Impact Assessment, template
 
 **Status: a template, not a completed assessment.** It is filled in before any camera
 watches a public street, and reviewed by someone qualified to sign it off. Shipping this
@@ -10,7 +10,7 @@ document as though it were the assessment would be worse than having no document
 
 Camera images of a public street are personal data whenever a person or a vehicle can be
 identified in them, and identifiability does not depend on whether anyone tries. The
-GDPR's household exemption — the clause that lets you film your own garden — expressly
+GDPR's household exemption, the clause that lets you film your own garden, expressly
 does **not** cover monitoring publicly accessible space, so it offers no shelter here.
 
 The Dutch supervisory authority lists large-scale systematic monitoring of publicly
@@ -84,7 +84,7 @@ and it has to be argued rather than assumed.
 | Question | Answer |
 |---|---|
 | Could the purpose be achieved without cameras? | |
-| Why is this sampling rate the minimum? | Default 0.125 fps — parking changes over minutes |
+| Why is this sampling rate the minimum? | Default 0.125 fps: parking changes over minutes |
 | Why is this field of view the minimum? | |
 | Are privacy masks applied to pavements, windows, doorways? | |
 | What is the retention period, and why that one? | |
@@ -163,13 +163,13 @@ high residual risk that cannot be mitigated. That is a decision to record, not t
 | Legal review (Dutch privacy counsel) | | | |
 
 **Review triggers:** any new camera, any change of field of view, any new purpose, any
-change to what is published, any change of processor — and at minimum annually.
+change to what is published, any change of processor, and at minimum annually.
 
 ---
 
 ## References
 
-- [Dutch DPA — DPIA guidance](https://www.autoriteitpersoonsgegevens.nl/en/themes/basic-gdpr/gdpr-in-practice/data-protection-impact-assessment-dpia)
+- [Dutch DPA, DPIA guidance](https://www.autoriteitpersoonsgegevens.nl/en/themes/basic-gdpr/gdpr-in-practice/data-protection-impact-assessment-dpia)
 - [EDPB Guidelines 3/2019 on processing personal data through video devices](https://www.edpb.europa.eu/documents/guideline/guidelines-32019-on-processing-of-personal-data-through-video-devices_en)
 - [Amsterdam camera surveillance policy](https://www.amsterdam.nl/privacy/cameratoezicht/)
-- [Police "Camera in Beeld"](https://www.politie.nl/onderwerpen/camera-in-beeld.html) — a registry for requesting evidence after a crime, not a live feed API
+- [Police "Camera in Beeld"](https://www.politie.nl/onderwerpen/camera-in-beeld.html): a registry for requesting evidence after a crime, not a live feed API

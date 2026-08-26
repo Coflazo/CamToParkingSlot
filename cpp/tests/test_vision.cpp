@@ -5,7 +5,7 @@
 // The homography cases are built by projecting known world points through a synthetic
 // but realistic camera, so the expected answers are exact rather than eyeballed. The
 // gap cases place vehicles at known positions along a known kerb, which makes the
-// measured gap length checkable to the centimetre -- and gap-length error is the
+// measured gap length checkable to the centimetre, and gap-length error is the
 // headline accuracy number for this whole subsystem.
 
 #include "test_framework.hpp"
@@ -27,7 +27,7 @@ namespace {
 ///
 /// Models a real installation: mounted 6 m up, tilted 25 degrees down, 1280x720. Ground
 /// points are rotated into camera space and projected through a pinhole, which produces
-/// exactly the perspective foreshortening a real kerb view has -- distant metres occupy
+/// exactly the perspective foreshortening a real kerb view has, distant metres occupy
 /// far fewer pixels than near ones, which is the whole reason a homography is needed.
 struct SyntheticCamera {
     double height_m{6.0};
@@ -279,7 +279,7 @@ TEST_CASE("perceptual hash: stable under sensor noise") {
 TEST_CASE("perceptual hash: a uniform frame carries no gradient information") {
     // Every comparison is a tie on a flat frame, and ties do not set a bit, so the hash
     // is zero. That is worth pinning: it means a fully obscured camera and a rising ramp
-    // hash identically, which is exactly why FROZEN is never the only check -- the
+    // hash identically, which is exactly why FROZEN is never the only check, the
     // brightness and sharpness tests are what catch a blanked-out view.
     CHECK_EQ(difference_hash(make_frame(160, 120, 120, false)), static_cast<PerceptualHash>(0));
     CHECK_EQ(difference_hash(ramp_frame(160, 120, true)), static_cast<PerceptualHash>(0));

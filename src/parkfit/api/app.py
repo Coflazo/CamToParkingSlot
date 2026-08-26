@@ -1,8 +1,8 @@
 """FastAPI application.
 
 Mounts the versioned API and exposes a health endpoint that reports what is actually
-loaded -- whether the native module is present, which routing provider is live, how much
-data is in the database -- rather than a bare "ok". A parking service that answers
+loaded, whether the native module is present, which routing provider is live, how much
+data is in the database, rather than a bare "ok". A parking service that answers
 "healthy" while its road graph failed to load is worse than one that admits it.
 """
 

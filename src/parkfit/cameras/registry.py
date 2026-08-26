@@ -115,7 +115,7 @@ class CameraRegistry:
         self.session = session
         self.settings = settings or get_settings()
 
-    # -- reading ------------------------------------------------------------
+    # reading ------------------------------------------------------------
     def get(self, camera_id: str) -> CameraSource | None:
         return self.session.execute(
             select(CameraSource).where(CameraSource.camera_id == camera_id)
@@ -131,7 +131,7 @@ class CameraRegistry:
     def runnable(self) -> list[CameraSource]:
         return [c for c, d in self.processable() if d.allowed and c.enabled]
 
-    # -- writing ------------------------------------------------------------
+    # writing ------------------------------------------------------------
     def register(
         self,
         camera_id: str,
@@ -195,7 +195,7 @@ class CameraRegistry:
 
         This is the status production accepts, and it is an assertion by a person, not a
         result the software can derive. The agreement reference is required so the claim
-        points at something -- a contract, a licence, a written permission -- rather than
+        points at something (a contract, a licence, a written permission) rather than
         being an unsupported flag in a database.
         """
         camera = self.get(camera_id)
@@ -245,7 +245,7 @@ class CameraRegistry:
         camera.last_frame_at = datetime.now(UTC)
         self.session.flush()
 
-    # -- reporting ----------------------------------------------------------
+    # reporting ----------------------------------------------------------
     def summary(self) -> dict[str, int]:
         counts: dict[str, int] = {}
         for camera in self.all():

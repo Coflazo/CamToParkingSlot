@@ -5,8 +5,8 @@ trip will really cost you, with the evidence behind every claim.
 
 You enter a destination and which of your cars you are driving. You get back parking
 options filtered by whether the vehicle physically fits and is legally allowed there,
-ranked by expected total inconvenience — drive time, walk time, price, and the risk that
-the space is gone when you arrive — with each result showing where its information came
+ranked by expected total inconvenience, drive time, walk time, price, and the risk that
+the space is gone when you arrive, with each result showing where its information came
 from and how old it is.
 
 ---
@@ -25,7 +25,7 @@ What it promises is narrower and actually keepable:
 
 Concretely, that means the system will tell you it **does not know** rather than guess.
 Of the 370 geolocated facilities in the national register, only 165 publish a height
-limit — so `UNVERIFIED` is the common answer to "does my van fit", and the app says so
+limit, so `UNVERIFIED` is the common answer to "does my van fit", and the app says so
 instead of quietly rounding it to yes.
 
 ---
@@ -96,7 +96,7 @@ pf_cv_worker (C++) ── ffmpeg → frame health → homography → detect → 
 
 Python owns orchestration, I/O and anything that talks to a network. C++ owns the
 arithmetic that runs per candidate on every search: coordinate transforms, the radius
-sweep over 210,000 bays, vehicle fit and the ranking. That split is not decoration — it
+sweep over 210,000 bays, vehicle fit and the ranking. That split is not decoration, it
 is what removes the PostGIS and OSRM dependencies and lets the whole product run on a
 laptop with nothing configured.
 
@@ -108,7 +108,7 @@ laptop with nothing configured.
 | [RDW open data](https://opendata.rdw.nl/) | National parking register: garages, park-and-ride, capacities, height limits, and vehicle lookup by plate | CC0 |
 | [NDW](https://opendata.ndw.nu/) | Live DATEX II parking occupancy, environmental zones, roadworks | CC0 |
 | [PDOK Locatieserver](https://www.pdok.nl/) | Dutch address geocoding | CC0 |
-| [OpenStreetMap](https://www.openstreetmap.org/) | Points of interest, car parks outside the register, road network | **ODbL** — share-alike, attribution required |
+| [OpenStreetMap](https://www.openstreetmap.org/) | Points of interest, car parks outside the register, road network | **ODbL**: share-alike, attribution required |
 
 The ODbL row is why every source carries its licence in the database rather than being
 assumed equivalent. Attribution travels with the data.
@@ -119,7 +119,7 @@ assumed equivalent. Attribution travels with the data.
 
 **Amsterdam publishes every parking bay as an exact polygon.** This is the single most
 valuable dataset in the project, and it changes what computer vision has to do. Without
-it, a camera must answer "where is a legal space and how long is it" — the research-grade
+it, a camera must answer "where is a legal space and how long is it", the research-grade
 problem. With it, geometry is a solved data problem and vision is left with the tractable
 question: *is this known bay occupied right now?* The bay corners double as surveyed
 calibration points, in the same metric frame the geometry needs.
@@ -134,8 +134,8 @@ destination names.
 **There is no harvestable camera network.** Commercial webcam aggregators do not expose
 stream URLs to a well-behaved client; their players resolve manifests at runtime through
 endpoints their own robots files frequently disallow. The auditor honours robots.txt,
-renders client-side pages and observes the media requests they make — reading, not
-circumvention — and still finds nothing for the major aggregators. That is a finding, not
+renders client-side pages and observes the media requests they make, reading, not
+circumvention, and still finds nothing for the major aggregators. That is a finding, not
 a gap to route around. The working path for a camera you hold rights to is two commands:
 
 ```
@@ -173,12 +173,12 @@ Frames are released immediately after processing, before anything else runs.
 
 These controls stay regardless of whether the project is commercial. GDPR has no
 non-commercial exemption, and the household exemption explicitly excludes monitoring
-public space — so the same rules apply to a hobby project and a service.
+public space, so the same rules apply to a hobby project and a service.
 
 - No facial recognition, no licence-plate recognition, no demographic analysis
 - Frames processed in memory and discarded; nothing written to disk in normal operation
 - Only occupancy, geometry, confidence and timestamps persisted
-- A licence plate is used once for the RDW lookup and then discarded — only the
+- A licence plate is used once for the RDW lookup and then discarded, only the
   dimensions are kept
 - Destination history is opt-in and off by default: it maps where somebody goes and when
 - A worker refuses to open a feed the registry has not cleared, as a hard stop rather

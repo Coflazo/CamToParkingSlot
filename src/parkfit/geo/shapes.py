@@ -63,7 +63,7 @@ def min_area_rect(ring: Ring) -> RectMeasurement:
     so trying one orientation per hull edge is exhaustive rather than a sampled guess.
 
     Using an axis-aligned bounding box instead would be badly wrong for any bay that is
-    not aligned to the RD grid -- and almost no Amsterdam street is. A 5.0 x 2.0 m bay
+    not aligned to the RD grid, and almost no Amsterdam street is. A 5.0 x 2.0 m bay
     rotated 30 degrees measures 5.33 x 4.23 m axis-aligned, which would pass a van into
     a space that cannot hold it.
     """
@@ -145,7 +145,7 @@ class BayMeasurement:
     The minimum-area rectangle is the smallest rectangle that *encloses* the polygon,
     which makes it the wrong number for a fit decision. Amsterdam bays drawn against a
     curving kerb are trapezoids: one real Abidjanweg bay has long sides of 5.48 m and
-    7.46 m, and the enclosing rectangle reports 7.46 -- claiming two metres of kerb that
+    7.46 m, and the enclosing rectangle reports 7.46, claiming two metres of kerb that
     do not exist, in the optimistic direction, for the number that decides whether a car
     fits.
 
@@ -189,7 +189,7 @@ def measure_bay(ring: Ring) -> BayMeasurement:
     So a quadrilateral is measured by its own edges: pair the opposite sides, take the
     mean of the longer pair as the length, and derive the width as ``area / length``.
     That width is the polygon perpendicular height, which is exactly the clearance a
-    car occupies -- 10.98 / 5.66 = 1.94 m for that Prinsengracht bay, ample for a
+    car occupies, 10.98 / 5.66 = 1.94 m for that Prinsengracht bay, ample for a
     1.75 m car. The result is exact for rectangles and parallelograms, and conservative
     for trapezoids: the Abidjanweg bay measures 6.47 x 1.99 m rather than the enclosing
     box 7.46 x 1.72 m.

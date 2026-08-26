@@ -3,8 +3,8 @@
 Radius search is deliberately *not* a database query. A ``lat BETWEEN ... AND lon
 BETWEEN ...`` predicate can only use the leading column of a composite index for a range
 scan, so SQLite narrows on latitude and then filters roughly 30,000 rows by longitude.
-With a warm page cache that costs 200 ms; with a cold one -- which is every fresh
-connection, and the API opens one per request -- it costs **four seconds**.
+With a warm page cache that costs 200 ms; with a cold one, which is every fresh
+connection, and the API opens one per request; it costs **four seconds**.
 
 The C++ grid answers the same question over 200,000 bays in microseconds and hands back
 ids, which turns the whole thing into a few hundred primary-key lookups. The index is
@@ -101,7 +101,7 @@ class CandidateIndex:
         self._facility_ids: list[int] = []
         self._bay_ids: list[int] = []
 
-    # -- building -----------------------------------------------------------
+    # building -----------------------------------------------------------
     def ensure_built(self, session: Session, *, force: bool = False) -> None:
         with self._lock:
             fresh = (time.monotonic() - self._built_at) < self.ttl_s
@@ -151,7 +151,7 @@ class CandidateIndex:
         with self._lock:
             self._built_at = 0.0
 
-    # -- querying -----------------------------------------------------------
+    # querying -----------------------------------------------------------
     def facilities_within(
         self, lat: float, lon: float, radius_m: float, limit: int
     ) -> list[IndexedTarget]:

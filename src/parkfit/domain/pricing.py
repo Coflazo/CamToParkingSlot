@@ -2,7 +2,7 @@
 
 Dutch parking tariffs are published as a tangle of per-operator fare codes and time
 windows, and coverage in the open data is patchy. Rather than pretend to a precision
-that is not there, this module returns a price *and a note saying where it came from* --
+that is not there, this module returns a price *and a note saying where it came from*:
 "operator tariff", "typical for this city", "unknown". The user interface shows the
 note, so an estimate never masquerades as a quoted fare.
 
@@ -127,7 +127,7 @@ def estimate_prices(
     """Price many candidates in two queries instead of one per candidate.
 
     A search prices several hundred options, and the per-candidate version issued a
-    round-trip each -- 456 queries for one search, costing more than the routing did.
+    round-trip each: 456 queries for one search, costing more than the routing did.
     """
     hours = max(0.25, duration_minutes / 60.0)
     out: dict[tuple[str, int], tuple[float, str]] = {}
@@ -161,7 +161,7 @@ def estimate_prices(
             if not bay.fiscal:
                 # NIET FISCAAL means the bay is not metered. In a Dutch city centre that
                 # usually means permit-controlled rather than genuinely free, and the
-                # regime data does not always say which -- so it is never presented as
+                # regime data does not always say which, so it is never presented as
                 # confirmed free parking.
                 out[key] = (0.0, "not metered: check the signs on arrival")
                 continue

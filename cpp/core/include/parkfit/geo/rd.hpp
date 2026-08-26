@@ -5,8 +5,8 @@
 // Every parking bay published by the City of Amsterdam is expressed in RD New,
 // so this transform sits on the critical path of the whole product. We use the
 // approximation published by the Dutch Kadaster ("Benaderingsformules", Schreutelkamp
-// & Strang van Hees), which is accurate to a few decimetres across the Netherlands --
-// far below the ~10 cm precision that parking-fit decisions actually need, and it
+// & Strang van Hees), which is accurate to a few decimetres across the Netherlands.
+// That is far below the ~10 cm precision that parking-fit decisions actually need, and it
 // avoids dragging a full datum-shift grid into the hot path.
 //
 // Reference point (Onze Lieve Vrouwetoren, Amersfoort):

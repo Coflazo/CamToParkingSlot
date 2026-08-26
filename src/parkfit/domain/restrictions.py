@@ -3,8 +3,8 @@
 An empty space and a usable space are not the same thing. A bay can be visibly free and
 still be reserved for permit holders, marked for disabled badges, inside a loading
 window, or an EV charging bay that a diesel must not occupy. Amsterdam publishes the
-sign code and time regimes for every bay, so this is knowable rather than guessable --
-and offering an illegal space is worse than offering none, because the driver pays for
+sign code and time regimes for every bay, so this is knowable rather than guessable.
+Offering an illegal space is worse than offering none, because the driver pays for
 the mistake with a fine.
 
 The rule that matters most here: **a restriction whose applicability is uncertain is

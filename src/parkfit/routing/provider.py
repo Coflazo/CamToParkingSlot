@@ -2,19 +2,19 @@
 
 A parking search needs two legs: drive from the current position to the parking
 *entrance*, then walk from the parking *exit* to the destination. Routing to a facility
-centroid instead of its entrance is a classic parking-app failure -- an Amsterdam garage
+centroid instead of its entrance is a classic parking-app failure, an Amsterdam garage
 centroid can sit inside a block, across a canal, or in a pedestrian zone.
 
 Three providers, tried in order:
 
-1. :class:`NativeGraphProvider` -- A* over a cached OpenStreetMap road graph. No
+1. :class:`NativeGraphProvider`, A* over a cached OpenStreetMap road graph. No
    containers, no services, correct one-way and turn handling.
-2. :class:`OsrmProvider` -- a running OSRM instance, when ``OSRM_URL`` is set.
-3. :class:`HaversineProvider` -- straight-line distance times a detour factor.
+2. :class:`OsrmProvider`, a running OSRM instance, when ``OSRM_URL`` is set.
+3. :class:`HaversineProvider`, straight-line distance times a detour factor.
 
 The chain always terminates in something that answers. A parking app that returns no
 results because a routing container is down is worse than one that says "about 8
-minutes" with lower confidence -- and each result carries which provider produced it,
+minutes" with lower confidence, and each result carries which provider produced it,
 so the ranking can discount accordingly.
 """
 
@@ -101,7 +101,7 @@ class HaversineProvider(RoutingProvider):
 
         distance = straight * factor
         duration = (distance / 1000.0) / max(1e-6, speed) * 60.0
-        # A short hop is dominated by fixed costs -- parking, doors, the barrier -- that
+        # A short hop is dominated by fixed costs (parking, doors, the barrier) that
         # a distance-over-speed model cannot see, so it never reports under a minute.
         duration = max(duration, 0.5)
         return RouteResult(
@@ -179,7 +179,7 @@ def get_routing_service() -> RoutingService:
 
     The road graph is 188k nodes and takes about a second to load, plus strongly
     connected components and two spatial indexes. Building a RoutingService per request
-    paid that cost every single time -- a two-search API call spent four seconds loading
+    paid that cost every single time: a two-search API call spent four seconds loading
     the same graph twice. It is immutable once built, so sharing it is safe.
     """
     return RoutingService()

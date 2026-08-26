@@ -30,7 +30,7 @@ struct Vehicle {
     double length_cm{0.0};
     double body_width_cm{0.0};
     /// Mirrors stick out 15-25 cm per side on a typical car and are what actually
-    /// scrapes a garage pillar, so this -- not body width -- governs lateral fit.
+    /// scrapes a garage pillar, so this (not body width) governs lateral fit.
     double width_with_mirrors_cm{0.0};
     double height_cm{0.0};
     /// Roof box, roof rack, bicycle carrier or aerial. This is the number that gets

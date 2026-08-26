@@ -7,8 +7,8 @@ not places people actually name when they say where they are going. OSM knows mu
 parks, stadiums, restaurants and hospitals by name, which is what turns a destination
 box into something a human can type into.
 
-**Parking outside the national register.** Plenty of real car parks -- supermarket lots,
-hospital decks, small private garages -- never reach RDW. ``amenity=parking`` covers many
+**Parking outside the national register.** Plenty of real car parks, supermarket lots,
+hospital decks, small private garages, never reach RDW. ``amenity=parking`` covers many
 of them, including access rules, height limits and surface type.
 
 Two operational notes. Overpass rejects a POST request with 406 but serves the identical
@@ -80,7 +80,7 @@ def parse_height_to_cm(value: str | None) -> float | None:
 
     OSM allows ``2.1``, ``2.1 m``, ``210 cm`` and imperial forms in the same field.
     A bare number is metres by OSM convention, which is the opposite of RDW, where a
-    bare number is centimetres -- get that backwards and every garage looks either
+    bare number is centimetres, get that backwards and every garage looks either
     impassable or unlimited.
     """
     if not value:
@@ -141,7 +141,7 @@ class OsmAdapter(BaseAdapter):
             return float(centre["lat"]), float(centre["lon"])
         return None
 
-    # -- points of interest -------------------------------------------------
+    # points of interest -------------------------------------------------
     def fetch_pois(
         self, south: float, west: float, north: float, east: float, *, timeout: int = 90
     ) -> list[OsmPoi]:
@@ -180,7 +180,7 @@ class OsmAdapter(BaseAdapter):
             )
         return pois
 
-    # -- parking ------------------------------------------------------------
+    # parking ------------------------------------------------------------
     def run(
         self,
         *,
