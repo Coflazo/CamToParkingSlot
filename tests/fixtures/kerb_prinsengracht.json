@@ -1,0 +1,7 @@
+{
+  "id": "curb_prinsengracht_west",
+  "note": "Synthetic 40 m kerb in RD New metres, used by the replay evaluation.",
+  "centreline_rd": [[121000.0, 487018.0], [121040.0, 487018.0]],
+  "usable_width_m": 2.05,
+  "prohibited": [[0.0, 2.0], [37.0, 40.0]]
+}
