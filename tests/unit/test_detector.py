@@ -142,8 +142,9 @@ def test_a_box_fully_inside_the_frame_is_untouched():
 
 
 def test_a_box_half_off_the_edge_reports_half_visible():
-    _, _, _, _, visible = scenes._clip_box(scenes.INPUT_WIDTH - 50.0, 20.0,
-                                           scenes.INPUT_WIDTH + 50.0, 80.0)
+    _, _, _, _, visible = scenes._clip_box(
+        scenes.INPUT_WIDTH - 50.0, 20.0, scenes.INPUT_WIDTH + 50.0, 80.0
+    )
     assert visible == pytest.approx(0.5, abs=0.02)
 
 
