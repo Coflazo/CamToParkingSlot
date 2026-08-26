@@ -49,8 +49,8 @@ from parkfit.routing.provider import (
     get_routing_service,
 )
 from parkfit.services.candidate_index import get_candidate_index
-from parkfit.services.ledger import LedgerEntry, get_ledger
 from parkfit.services.geocoding import Destination, HybridGeocoder
+from parkfit.services.ledger import LedgerEntry, get_ledger
 from parkfit.storage.models import (
     EvidenceSource,
     FacilityKind,
@@ -537,8 +537,10 @@ class SearchEngine:
     ) -> list[Candidate]:
         if native is None:
             candidates.sort(
-                key=lambda c: (c.drive.duration_min if c.drive else 0)
-                + (c.walk.duration_min if c.walk else 0)
+                key=lambda c: (
+                    (c.drive.duration_min if c.drive else 0)
+                    + (c.walk.duration_min if c.walk else 0)
+                )
             )
             return candidates[: self.settings.max_results]
 
@@ -574,9 +576,7 @@ class SearchEngine:
             # as such. Presenting a prior as a stale live reading would be a lie about
             # provenance, and it would also trip the exact-space time-to-live.
             nc.evidence = _native_evidence(
-                availability.evidence
-                if observed
-                else EvidenceSource.PREDICTIVE_MODEL
+                availability.evidence if observed else EvidenceSource.PREDICTIVE_MODEL
             )
             nc.fit_verdict = _native_verdict(candidate.fit_verdict)
             nc.is_exact_space = candidate.is_exact_space

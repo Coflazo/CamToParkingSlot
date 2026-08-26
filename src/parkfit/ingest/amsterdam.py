@@ -25,7 +25,6 @@ import logging
 from typing import Any
 
 import httpx
-
 from sqlalchemy import delete, select
 
 from parkfit.geo.rd import rd_in_range, rd_to_wgs84, ring_centroid_rd
@@ -55,6 +54,7 @@ class _NullContext:
     def __exit__(self, *exc):
         return False
 
+
 ORIENTATION_BY_TYPE = {
     "langs": BayOrientation.PARALLEL,
     "haaks": BayOrientation.PERPENDICULAR,
@@ -74,6 +74,7 @@ SIGN_VEHICLE_CATEGORY = {"E8"}
 #: Words appearing in the ``bord`` (sign text) field that indicate an EV-only bay.
 EV_SIGN_MARKERS = ("opladen", "elektrisch", "laadpunt", "oplaad")
 
+
 def parse_time_to_minutes(value: str | None) -> int | None:
     """Amsterdam writes regime times as ``HH:MM:SS``."""
     if not value:
@@ -86,6 +87,7 @@ def parse_time_to_minutes(value: str | None) -> int | None:
         return None
     return hours * 60 + minutes
 
+
 def weekday_mask(days: list[str] | None) -> int:
     """Pack Dutch day abbreviations into a 7-bit mask. Absent means every day."""
     if not days:
@@ -96,6 +98,7 @@ def weekday_mask(days: list[str] | None) -> int:
         if idx is not None:
             mask |= 1 << idx
     return mask or 0b1111111
+
 
 #: Aspect ratio separating the two layouts when the source omits ``type``.
 #: Measured over 57k Amsterdam bays: parallel bays sit near 3.0 (5.51 m / 1.84 m) and
@@ -173,7 +176,8 @@ class AmsterdamAdapter(BaseAdapter):
                     log.warning(
                         "Amsterdam: pagination ceiling reached at page %d (%s); "
                         "partition the query to read further",
-                        page, exc.response.status_code,
+                        page,
+                        exc.response.status_code,
                     )
                     return
                 raise
@@ -310,7 +314,9 @@ class AmsterdamAdapter(BaseAdapter):
             if index % 25 == 0:
                 log.info(
                     "Amsterdam: %d/%d buurten, %d bays created so far",
-                    index, len(codes), combined.created,
+                    index,
+                    len(codes),
+                    combined.created,
                 )
 
         combined.finished_at = utcnow()
@@ -353,8 +359,8 @@ class AmsterdamAdapter(BaseAdapter):
         bay.lat = lat
         bay.lon = lon
         bay.geometry_rd_json = json.dumps(ring, separators=(",", ":"))
-        bay.street = (row.get("straatnaam") or None)
-        bay.neighbourhood_code = (row.get("buurtcode") or None)
+        bay.street = row.get("straatnaam") or None
+        bay.neighbourhood_code = row.get("buurtcode") or None
 
         orientation = ORIENTATION_BY_TYPE.get(
             str(row.get("type") or "").strip().lower(), BayOrientation.UNKNOWN
@@ -375,7 +381,7 @@ class AmsterdamAdapter(BaseAdapter):
             bay.bay_count = 1
 
         bay.fiscal = str(row.get("soort") or "").strip().upper() == "FISCAAL"
-        bay.sign_code = (row.get("eType") or None)
+        bay.sign_code = row.get("eType") or None
         regimes = row.get("regimes") or []
         bay.regimes_json = json.dumps(regimes, separators=(",", ":")) if regimes else None
         bay.source_record_id = external_id

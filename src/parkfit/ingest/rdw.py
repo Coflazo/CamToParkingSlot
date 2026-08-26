@@ -49,15 +49,15 @@ from parkfit.storage.session import session_scope
 log = logging.getLogger(__name__)
 
 # Verified reachable 2026-08-26.
-DATASET_INDEX = "f6v7-gjpa"        # organisations and their static/dynamic feed URLs
-DATASET_AREA = "8u4d-s4q7"         # GEBIED            14748 rows
-DATASET_SPECS = "b3us-f26s"        # SPECIFICATIES      3137 rows
-DATASET_USAGE = "mz4f-59fw"        # GEBRUIKSDOEL      14691 rows
-DATASET_GEO_GARAGE = "t5pc-eb34"   # GEO garages         237 rows
-DATASET_GEO_PR = "6wzd-evwu"       # GEO park-and-ride   134 rows
-DATASET_MANAGER = "2uc2-nnv3"      # GEBIEDSBEHEERDER    461 rows
-DATASET_OPEN = "figd-gux7"         # PARKING OPEN       2824 rows
-DATASET_ACCESS = "edv8-qiyg"       # PARKING TOEGANG    4826 rows
+DATASET_INDEX = "f6v7-gjpa"  # organisations and their static/dynamic feed URLs
+DATASET_AREA = "8u4d-s4q7"  # GEBIED            14748 rows
+DATASET_SPECS = "b3us-f26s"  # SPECIFICATIES      3137 rows
+DATASET_USAGE = "mz4f-59fw"  # GEBRUIKSDOEL      14691 rows
+DATASET_GEO_GARAGE = "t5pc-eb34"  # GEO garages         237 rows
+DATASET_GEO_PR = "6wzd-evwu"  # GEO park-and-ride   134 rows
+DATASET_MANAGER = "2uc2-nnv3"  # GEBIEDSBEHEERDER    461 rows
+DATASET_OPEN = "figd-gux7"  # PARKING OPEN       2824 rows
+DATASET_ACCESS = "edv8-qiyg"  # PARKING TOEGANG    4826 rows
 
 #: Exact usage codes, checked before the prefix heuristic below.
 USAGE_EXACT: dict[str, FacilityKind] = {
@@ -65,7 +65,7 @@ USAGE_EXACT: dict[str, FacilityKind] = {
     "PARKRIDE": FacilityKind.PARK_AND_RIDE,
     "CARPOOL": FacilityKind.PARK_AND_RIDE,
     "TERREINP": FacilityKind.SURFACE_LOT,
-    "TEREINP": FacilityKind.SURFACE_LOT,      # a real typo in the upstream data
+    "TEREINP": FacilityKind.SURFACE_LOT,  # a real typo in the upstream data
     "PRTERREIN": FacilityKind.SURFACE_LOT,
     "TRUCKP": FacilityKind.TRUCK_PARKING,
     "BETAALDP": FacilityKind.ON_STREET_ZONE,
@@ -190,9 +190,13 @@ class RdwAdapter(SocrataAdapter):
             # start date wins, because an old barrier height is worse than none.
             existing = specs.get(key)
             started = parse_rdw_datetime(row.get("startdatespecifications"))
-            if existing and existing.get("_started") and started:
-                if started < existing["_started"]:
-                    continue
+            if (
+                existing
+                and existing.get("_started")
+                and started
+                and (started < existing["_started"])
+            ):
+                continue
             specs[key] = {
                 "capacity": parse_int(row.get("capacity")),
                 "charging": parse_int(row.get("chargingpointcapacity")),
@@ -269,7 +273,11 @@ class RdwAdapter(SocrataAdapter):
         index = self._load_index()
         log.info(
             "RDW: geo=%d specs=%d usage=%d open=%d access=%d",
-            len(geo), len(specs), len(usage), len(opening), len(access),
+            len(geo),
+            len(specs),
+            len(usage),
+            len(opening),
+            len(access),
         )
 
         with session_scope() as session:
@@ -315,9 +323,7 @@ class RdwAdapter(SocrataAdapter):
                 facility = existing.get((self.meta.name, external_id))
                 created = facility is None
                 if facility is None:
-                    facility = ParkingFacility(
-                        source_name=self.meta.name, external_id=external_id
-                    )
+                    facility = ParkingFacility(source_name=self.meta.name, external_id=external_id)
                     session.add(facility)
 
                 facility.area_manager_id = amid
@@ -383,10 +389,7 @@ class RdwAdapter(SocrataAdapter):
         row.last_reviewed = utcnow()
 
     def _sync_managers(self, session, index: dict[str, dict[str, Any]]) -> dict[str, dict]:
-        existing = {
-            m.area_manager_id: m
-            for m in session.execute(select(AreaManager)).scalars()
-        }
+        existing = {m.area_manager_id: m for m in session.execute(select(AreaManager)).scalars()}
         info: dict[str, dict] = {}
         for row in self.socrata_rows(DATASET_MANAGER):
             amid = str(row.get("areamanagerid", ""))

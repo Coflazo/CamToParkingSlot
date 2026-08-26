@@ -22,9 +22,9 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from functools import lru_cache
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
+from functools import lru_cache
 
 import httpx
 
@@ -34,12 +34,12 @@ from parkfit.geo.rd import haversine_m
 log = logging.getLogger(__name__)
 
 
-class Profile(str, Enum):
+class Profile(StrEnum):
     CAR = "car"
     FOOT = "foot"
 
 
-class RoutingUnavailable(RuntimeError):
+class RoutingUnavailableError(RuntimeError):
     """Raised by a provider that cannot answer, so the chain moves on."""
 
 
@@ -143,7 +143,7 @@ class OsrmProvider(RoutingProvider):
         self, from_lat: float, from_lon: float, to_lat: float, to_lon: float, profile: Profile
     ) -> RouteResult:
         if not self.settings.osrm_url:
-            raise RoutingUnavailable("OSRM_URL is not configured")
+            raise RoutingUnavailableError("OSRM_URL is not configured")
         path = self.PROFILE_PATH[profile]
         url = (
             f"{self.settings.osrm_url.rstrip('/')}/route/v1/{path}/"
@@ -156,11 +156,11 @@ class OsrmProvider(RoutingProvider):
             response.raise_for_status()
             payload = response.json()
         except (httpx.HTTPError, ValueError) as exc:
-            raise RoutingUnavailable(f"OSRM request failed: {exc}") from exc
+            raise RoutingUnavailableError(f"OSRM request failed: {exc}") from exc
 
         routes = payload.get("routes") or []
         if not routes:
-            raise RoutingUnavailable("OSRM returned no route")
+            raise RoutingUnavailableError("OSRM returned no route")
         best = routes[0]
         geometry = (best.get("geometry") or {}).get("coordinates") or []
         return RouteResult(
@@ -174,7 +174,7 @@ class OsrmProvider(RoutingProvider):
 
 
 @lru_cache(maxsize=1)
-def get_routing_service() -> "RoutingService":
+def get_routing_service() -> RoutingService:
     """One shared routing service per process.
 
     The road graph is 188k nodes and takes about a second to load, plus strongly
@@ -188,8 +188,9 @@ def get_routing_service() -> "RoutingService":
 class RoutingService:
     """Tries each provider in turn and returns the first real answer."""
 
-    def __init__(self, providers: list[RoutingProvider] | None = None,
-                 settings: Settings | None = None):
+    def __init__(
+        self, providers: list[RoutingProvider] | None = None, settings: Settings | None = None
+    ):
         self.settings = settings or get_settings()
         if providers is None:
             from parkfit.routing.graph import NativeGraphProvider
@@ -210,18 +211,16 @@ class RoutingService:
                 continue
             try:
                 return provider.route(from_lat, from_lon, to_lat, to_lon, profile)
-            except RoutingUnavailable as exc:
+            except RoutingUnavailableError as exc:
                 errors.append(f"{provider.name}: {exc}")
-            except Exception as exc:  # noqa: BLE001 - a provider fault must not end a search
+            except Exception as exc:
                 log.warning("routing provider %s raised: %s", provider.name, exc)
                 errors.append(f"{provider.name}: {exc}")
 
         # The chain is built so this cannot normally happen: HaversineProvider needs
         # nothing but arithmetic. Reaching here means every provider was excluded.
         log.error("all routing providers failed: %s", "; ".join(errors))
-        return HaversineProvider(self.settings).route(
-            from_lat, from_lon, to_lat, to_lon, profile
-        )
+        return HaversineProvider(self.settings).route(from_lat, from_lon, to_lat, to_lon, profile)
 
     def many_routes(
         self,
@@ -246,14 +245,14 @@ class RoutingService:
             if not provider.available() or not hasattr(provider, "_ensure_router"):
                 continue
             try:
-                router = provider._ensure_router()  # noqa: SLF001 - same package
+                router = provider._ensure_router()
                 results = router.many_costs(
                     from_lat, from_lon, targets, profile, max_seconds=max_seconds
                 )
                 break
-            except RoutingUnavailable:
+            except RoutingUnavailableError:
                 continue
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 log.warning("one-to-many routing failed: %s", exc)
                 continue
 

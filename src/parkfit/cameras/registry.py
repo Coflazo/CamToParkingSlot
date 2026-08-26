@@ -99,7 +99,9 @@ def evaluate_permission(
     # that automated processing is not allowed, and that outranks a robots file.
     if camera.automated_processing_allowed is False:
         return PermissionDecision(
-            False, status, "automated processing is explicitly recorded as not allowed",
+            False,
+            status,
+            "automated processing is explicitly recorded as not allowed",
             environment,
         )
 

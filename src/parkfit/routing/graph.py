@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import gzip
 import heapq
+import itertools
 import json
 import logging
 import math
@@ -30,7 +31,7 @@ from pathlib import Path
 
 from parkfit.config import Settings, get_settings
 from parkfit.geo.rd import haversine_m
-from parkfit.routing.provider import Profile, RouteResult, RoutingProvider, RoutingUnavailable
+from parkfit.routing.provider import Profile, RouteResult, RoutingProvider, RoutingUnavailableError
 
 log = logging.getLogger(__name__)
 
@@ -38,11 +39,16 @@ log = logging.getLogger(__name__)
 #: these are journey speeds including junctions, lights and the general friction of a
 #: Dutch city centre, not signposted maxima.
 CAR_SPEED_KMH = {
-    "motorway": 100.0, "motorway_link": 60.0,
-    "trunk": 70.0, "trunk_link": 45.0,
-    "primary": 45.0, "primary_link": 35.0,
-    "secondary": 38.0, "secondary_link": 30.0,
-    "tertiary": 32.0, "tertiary_link": 25.0,
+    "motorway": 100.0,
+    "motorway_link": 60.0,
+    "trunk": 70.0,
+    "trunk_link": 45.0,
+    "primary": 45.0,
+    "primary_link": 35.0,
+    "secondary": 38.0,
+    "secondary_link": 30.0,
+    "tertiary": 32.0,
+    "tertiary_link": 25.0,
     "unclassified": 25.0,
     "residential": 20.0,
     "living_street": 12.0,
@@ -51,9 +57,22 @@ CAR_SPEED_KMH = {
 }
 
 FOOT_WAYS = {
-    "footway", "path", "pedestrian", "steps", "living_street", "residential",
-    "service", "unclassified", "track", "tertiary", "secondary", "primary",
-    "road", "cycleway", "corridor", "platform",
+    "footway",
+    "path",
+    "pedestrian",
+    "steps",
+    "living_street",
+    "residential",
+    "service",
+    "unclassified",
+    "track",
+    "tertiary",
+    "secondary",
+    "primary",
+    "road",
+    "cycleway",
+    "corridor",
+    "platform",
 }
 
 CAR_WAYS = set(CAR_SPEED_KMH)
@@ -121,7 +140,7 @@ class GraphBuilder:
             speed = self._car_speed(highway, tags)
             walk_penalty = STEPS_PENALTY if highway == "steps" else 1.0
 
-            for a, b in zip(node_ids, node_ids[1:], strict=False):
+            for a, b in itertools.pairwise(node_ids):
                 pa, pb = coords.get(a), coords.get(b)
                 if pa is None or pb is None:
                     continue
@@ -442,7 +461,7 @@ class RoadRouter:
         # one another by construction rather than by luck.
         goal = self.nearest_node(to_lat, to_lon, profile)
         if goal is None:
-            raise RoutingUnavailable("no routable node near the destination")
+            raise RoutingUnavailableError("no routable node near the destination")
         goal_component = self.components(profile).get(goal)
         start = self.nearest_node(from_lat, from_lon, profile, component=goal_component)
         if start is None:
@@ -453,7 +472,7 @@ class RoadRouter:
             goal = self.nearest_node(to_lat, to_lon, profile, component=main)
             start = self.nearest_node(from_lat, from_lon, profile, component=main)
         if start is None or goal is None:
-            raise RoutingUnavailable("no routable node near one of the endpoints")
+            raise RoutingUnavailableError("no routable node near one of the endpoints")
         if start == goal:
             straight = haversine_m(from_lat, from_lon, to_lat, to_lon)
             speed = 20.0 if profile is Profile.CAR else WALK_SPEED_KMH
@@ -502,7 +521,7 @@ class RoadRouter:
                     distance[neighbour] = distance[current] + length
                     heapq.heappush(open_heap, (tentative + heuristic(neighbour), neighbour))
 
-        raise RoutingUnavailable("no path between the endpoints in this graph")
+        raise RoutingUnavailableError("no path between the endpoints in this graph")
 
     def _build_result(
         self, came_from: dict[int, int], goal: int, seconds: float, metres: float, profile: Profile
@@ -548,7 +567,7 @@ class NativeGraphProvider(RoutingProvider):
             return self._router
         self._load_attempted = True
         if not self.cache_path.exists():
-            raise RoutingUnavailable(
+            raise RoutingUnavailableError(
                 f"no cached road graph at {self.cache_path}; run: pf ingest roads"
             )
         with gzip.open(self.cache_path, "rt", encoding="utf-8") as handle:

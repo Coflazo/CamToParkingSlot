@@ -62,7 +62,7 @@ class EvidenceSource(enum.IntEnum):
     OPERATOR_FEED = 6
 
 
-class FacilityKind(str, enum.Enum):
+class FacilityKind(enum.StrEnum):
     GARAGE = "garage"
     SURFACE_LOT = "surface_lot"
     PARK_AND_RIDE = "park_and_ride"
@@ -71,23 +71,23 @@ class FacilityKind(str, enum.Enum):
     UNKNOWN = "unknown"
 
 
-class BayOrientation(str, enum.Enum):
+class BayOrientation(enum.StrEnum):
     """Matches the Amsterdam ``parkeervakken`` ``type`` field."""
 
-    PARALLEL = "parallel"      # Langs
+    PARALLEL = "parallel"  # Langs
     PERPENDICULAR = "perpendicular"  # Haaks
-    ANGLED = "angled"          # Visgraat
+    ANGLED = "angled"  # Visgraat
     UNKNOWN = "unknown"
 
 
-class OccupancyState(str, enum.Enum):
+class OccupancyState(enum.StrEnum):
     VACANT = "vacant"
     OCCUPIED = "occupied"
     VACANT_GAP = "vacant_gap"
     UNKNOWN = "unknown"
 
 
-class CameraPermission(str, enum.Enum):
+class CameraPermission(enum.StrEnum):
     """Whether a feed may be processed automatically.
 
     ``ROBOTS_OK`` means the host permits crawling and no prohibition was found, which is
@@ -95,14 +95,14 @@ class CameraPermission(str, enum.Enum):
     enforced by :mod:`parkfit.cameras.registry`, not by convention.
     """
 
-    AUTHORISED = "authorised"          # written agreement or explicit open licence
+    AUTHORISED = "authorised"  # written agreement or explicit open licence
     OWNER_ATTESTED = "owner_attested"  # operator attests they hold the rights
-    ROBOTS_OK = "robots_ok"            # crawlable, terms unverified: dev use only
+    ROBOTS_OK = "robots_ok"  # crawlable, terms unverified: dev use only
     UNVERIFIED = "unverified"
-    BLOCKED = "blocked"                # robots.txt or terms forbid automated access
+    BLOCKED = "blocked"  # robots.txt or terms forbid automated access
 
 
-class FrameHealth(str, enum.Enum):
+class FrameHealth(enum.StrEnum):
     HEALTHY = "healthy"
     DARK = "dark"
     BLURRED = "blurred"
@@ -508,7 +508,9 @@ class CameraSource(Base, ProvenanceMixin):
     operator: Mapped[str | None] = mapped_column(String(200), nullable=True)
     public_page_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     stream_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    stream_type: Mapped[str | None] = mapped_column(String(30), nullable=True)  # hls|mjpeg|rtsp|snapshot|file
+    stream_type: Mapped[str | None] = mapped_column(
+        String(30), nullable=True
+    )  # hls|mjpeg|rtsp|snapshot|file
 
     lat: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
     lon: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
@@ -693,7 +695,9 @@ class Recommendation(Base):
     confidence_label: Mapped[str] = mapped_column(String(40), default="")
     fit_verdict: Mapped[str] = mapped_column(String(20), default="")
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
     __table_args__ = (Index("ix_recommendation_active", "target_id", "expires_at"),)
@@ -710,7 +714,9 @@ class UserConfirmation(Base):
     target_id: Mapped[int] = mapped_column(Integer, index=True)
 
     outcome: Mapped[str] = mapped_column(String(30))  # parked|was_occupied|not_found|illegal
-    reported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    reported_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
     recommendation_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -721,7 +727,9 @@ class DataQualityIncident(Base):
     __tablename__ = "data_quality_incidents"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    detected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
     source_name: Mapped[str] = mapped_column(String(120), index=True)
     severity: Mapped[str] = mapped_column(String(20), default="warning")
     kind: Mapped[str] = mapped_column(String(60), index=True)

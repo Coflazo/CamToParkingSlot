@@ -225,15 +225,17 @@ def measure_bay(ring: Ring) -> BayMeasurement:
         rect_area = rect.length_m * rect.width_m
         if rect_area <= 1e-9 or area <= 1e-9:
             return BayMeasurement(
-                length_m=rect.length_m, width_m=rect.width_m,
-                max_length_m=rect.length_m, max_width_m=rect.width_m,
-                angle_rad=rect.angle_rad, fill_ratio=0.0,
-                centre_x=rect.centre_x, centre_y=rect.centre_y,
+                length_m=rect.length_m,
+                width_m=rect.width_m,
+                max_length_m=rect.length_m,
+                max_width_m=rect.width_m,
+                angle_rad=rect.angle_rad,
+                fill_ratio=0.0,
+                centre_x=rect.centre_x,
+                centre_y=rect.centre_y,
             )
-        length_m = min(area / rect.width_m if rect.width_m > 1e-9 else rect.length_m,
-                       rect.length_m)
-        width_m = min(area / rect.length_m if rect.length_m > 1e-9 else rect.width_m,
-                      rect.width_m)
+        length_m = min(area / rect.width_m if rect.width_m > 1e-9 else rect.length_m, rect.length_m)
+        width_m = min(area / rect.length_m if rect.length_m > 1e-9 else rect.width_m, rect.width_m)
 
     if width_m > length_m:
         length_m, width_m = width_m, length_m
@@ -253,6 +255,10 @@ def measure_bay(ring: Ring) -> BayMeasurement:
 
 def _dedupe_closing_point(ring: Ring) -> Ring:
     """Drop a repeated final vertex, which GeoJSON rings carry by convention."""
-    if len(ring) >= 2 and abs(ring[0][0] - ring[-1][0]) < 1e-9 and abs(ring[0][1] - ring[-1][1]) < 1e-9:
+    if (
+        len(ring) >= 2
+        and abs(ring[0][0] - ring[-1][0]) < 1e-9
+        and abs(ring[0][1] - ring[-1][1]) < 1e-9
+    ):
         return ring[:-1]
     return ring

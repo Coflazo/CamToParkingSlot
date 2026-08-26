@@ -52,7 +52,9 @@ async def register(
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: LoginRequest, session: AsyncSession = Depends(get_session)) -> TokenResponse:
+async def login(
+    payload: LoginRequest, session: AsyncSession = Depends(get_session)
+) -> TokenResponse:
     email = payload.email.lower()
     user = (
         await session.execute(select(User).where(func.lower(User.email) == email))

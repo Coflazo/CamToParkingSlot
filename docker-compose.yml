@@ -1,0 +1,66 @@
+# Optional upgrade path. Nothing here is required: the product runs on SQLite with the
+# native routing engine and no containers at all.
+#
+# These services exist for when you outgrow that:
+#   - PostGIS when several writers need the same database
+#   - OSRM when you want turn-by-turn quality routing over a national extract
+#   - Redis when the recommendation ledger must be shared across processes
+#
+# The application detects them by environment variable and upgrades automatically. There
+# is no configuration flag to set and no code path that changes.
+
+services:
+  postgis:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: parkfit
+      POSTGRES_USER: parkfit
+      POSTGRES_PASSWORD: parkfit
+    ports: ["5432:5432"]
+    volumes: ["postgis-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U parkfit"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+
+  # Building the OSRM graph is a one-off, and it is not quick: a Netherlands extract is
+  # roughly 1.5 GB and preprocessing takes twenty minutes or so. Run these once, then
+  # start the routed service.
+  #
+  #   docker compose run --rm osrm-extract
+  #   docker compose run --rm osrm-partition
+  #   docker compose run --rm osrm-customize
+  #   docker compose --profile osrm up osrm
+  osrm-extract:
+    image: ghcr.io/project-osrm/osrm-backend:latest
+    profiles: ["osrm-build"]
+    volumes: ["./data/osm:/data"]
+    command: osrm-extract -p /opt/car.lua /data/netherlands-latest.osm.pbf
+
+  osrm-partition:
+    image: ghcr.io/project-osrm/osrm-backend:latest
+    profiles: ["osrm-build"]
+    volumes: ["./data/osm:/data"]
+    command: osrm-partition /data/netherlands-latest.osrm
+
+  osrm-customize:
+    image: ghcr.io/project-osrm/osrm-backend:latest
+    profiles: ["osrm-build"]
+    volumes: ["./data/osm:/data"]
+    command: osrm-customize /data/netherlands-latest.osrm
+
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:latest
+    profiles: ["osrm"]
+    ports: ["5000:5000"]
+    volumes: ["./data/osm:/data"]
+    command: osrm-routed --algorithm mld /data/netherlands-latest.osrm
+
+volumes:
+  postgis-data:

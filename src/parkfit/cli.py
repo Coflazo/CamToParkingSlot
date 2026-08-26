@@ -115,12 +115,16 @@ def ingest_osm(verbose: bool = typer.Option(False, "--verbose", "-v")) -> None:
 
 @ingest_app.command("roads")
 def ingest_roads(
-    south: float = 52.33, west: float = 4.82, north: float = 52.41, east: float = 4.97,
+    south: float = 52.33,
+    west: float = 4.82,
+    north: float = 52.41,
+    east: float = 4.97,
     verbose: bool = typer.Option(False, "--verbose", "-v"),
 ) -> None:
     """Build and cache the routable road graph for a bounding box."""
     _setup_logging(verbose)
-    from parkfit.ingest.osm import OsmAdapter, ingest_roads as build
+    from parkfit.ingest.osm import OsmAdapter
+    from parkfit.ingest.osm import ingest_roads as build
 
     with OsmAdapter() as adapter:
         result = build(adapter, south=south, west=west, north=north, east=east)
@@ -162,8 +166,13 @@ def _print_ingest_table(results) -> None:
         table.add_column(column, justify="right" if column != "source" else "left")
     for r in results:
         table.add_row(
-            r.source, str(r.fetched), str(r.created), str(r.updated), str(r.skipped),
-            str(len(r.errors)), f"{r.duration_s:.1f}",
+            r.source,
+            str(r.fetched),
+            str(r.created),
+            str(r.updated),
+            str(r.skipped),
+            str(len(r.errors)),
+            f"{r.duration_s:.1f}",
         )
     console.print(table)
 
@@ -200,10 +209,17 @@ def search(
         raise typer.Exit(2) from None
 
     vehicle = VehicleProfile(
-        id="cli", nickname="cli vehicle", length_cm=length, body_width_cm=width,
-        width_with_mirrors_cm=mirrors or (width + 36.0), height_cm=height,
-        height_with_accessories_cm=height, weight_kg=weight,
-        length_confirmed=True, width_confirmed=bool(mirrors), height_confirmed=True,
+        id="cli",
+        nickname="cli vehicle",
+        length_cm=length,
+        body_width_cm=width,
+        width_with_mirrors_cm=mirrors or (width + 36.0),
+        height_cm=height,
+        height_with_accessories_cm=height,
+        weight_kg=weight,
+        length_confirmed=True,
+        width_confirmed=bool(mirrors),
+        height_confirmed=True,
     )
 
     with session_scope() as session:
@@ -211,9 +227,12 @@ def search(
         try:
             response = engine.search(
                 SearchRequest(
-                    destination=destination, vehicle=vehicle,
-                    origin_lat=origin_lat, origin_lon=origin_lon,
-                    arrival_time=datetime.now(UTC), duration_minutes=duration,
+                    destination=destination,
+                    vehicle=vehicle,
+                    origin_lat=origin_lat,
+                    origin_lon=origin_lon,
+                    arrival_time=datetime.now(UTC),
+                    duration_minutes=duration,
                     preferences=SearchPreferences(
                         max_walk_minutes=walk, include_on_street=on_street
                     ),
@@ -232,23 +251,33 @@ def _search_to_dict(response) -> dict:
     return {
         "search_id": response.search_id,
         "destination": (
-            {"label": response.destination.label, "lat": response.destination.lat,
-             "lon": response.destination.lon, "source": response.destination.source}
-            if response.destination else None
+            {
+                "label": response.destination.label,
+                "lat": response.destination.lat,
+                "lon": response.destination.lon,
+                "source": response.destination.source,
+            }
+            if response.destination
+            else None
         ),
         "elapsed_ms": round(response.elapsed_ms, 1),
         "considered": response.considered,
         "warnings": response.warnings,
         "results": [
             {
-                "rank": i, "name": c.name, "kind": c.kind,
+                "rank": i,
+                "name": c.name,
+                "kind": c.kind,
                 "drive_min": round(c.drive.duration_min, 1) if c.drive else None,
                 "walk_min": round(c.walk.duration_min, 1) if c.walk else None,
-                "price_eur": c.price_eur, "price_note": c.price_note,
+                "price_eur": c.price_eur,
+                "price_note": c.price_note,
                 "probability": round(c.probability_at_eta, 3),
                 "cost": round(c.generalised_cost, 2),
-                "fit": c.fit_verdict, "confidence": c.confidence_label,
-                "lat": c.lat, "lon": c.lon,
+                "fit": c.fit_verdict,
+                "confidence": c.confidence_label,
+                "lat": c.lat,
+                "lon": c.lon,
             }
             for i, c in enumerate(response.results)
         ],
@@ -314,7 +343,8 @@ def camera_add(
     url: Annotated[str, typer.Option("--url", help="Stream URL.")],
     stream_type: str = typer.Option("hls", "--type", help="hls, mjpeg, rtsp, snapshot or file."),
     owner: str = typer.Option("", help="Who owns the camera."),
-    lat: float = typer.Option(0.0), lon: float = typer.Option(0.0),
+    lat: float = typer.Option(0.0),
+    lon: float = typer.Option(0.0),
     attest: str = typer.Option(
         "", help="Reference to the permission you hold. Sets owner_attested."
     ),
@@ -332,8 +362,12 @@ def camera_add(
     with session_scope() as session:
         registry = CameraRegistry(session)
         registry.register(
-            camera_id, stream_url=url, stream_type=stream_type, owner=owner or None,
-            lat=lat or None, lon=lon or None,
+            camera_id,
+            stream_url=url,
+            stream_type=stream_type,
+            owner=owner or None,
+            lat=lat or None,
+            lon=lon or None,
         )
         if attest:
             registry.attest_ownership(camera_id, agreement_reference=attest)
@@ -360,8 +394,9 @@ def camera_list() -> None:
         console.print("[dim]No cameras registered. Add one with: pf cameras add[/dim]")
         return
 
-    table = Table(title=f"Camera registry ({get_settings().environment.value})",
-                  header_style="bold")
+    table = Table(
+        title=f"Camera registry ({get_settings().environment.value})", header_style="bold"
+    )
     for column in ("camera", "status", "may run", "enabled", "type", "health"):
         table.add_column(column)
     for camera, decision in rows:
@@ -426,8 +461,10 @@ def camera_audit(
         table.add_column(column, overflow="fold")
     for candidate in candidates[:30]:
         table.add_row(
-            candidate.source_site, candidate.permission_status,
-            candidate.stream_type or "-", (candidate.stream_url or candidate.page_url)[:70],
+            candidate.source_site,
+            candidate.permission_status,
+            candidate.stream_type or "-",
+            (candidate.stream_url or candidate.page_url)[:70],
         )
     console.print(table)
     console.print(f"\n[dim]report written to {path}[/dim]")
@@ -492,7 +529,11 @@ def status() -> None:
     from parkfit.native import HAS_NATIVE, native_version
     from parkfit.routing.provider import get_routing_service
     from parkfit.storage.models import (
-        AvailabilityObservation, CameraSource, ParkingBay, ParkingFacility, PointOfInterest,
+        AvailabilityObservation,
+        CameraSource,
+        ParkingBay,
+        ParkingFacility,
+        PointOfInterest,
     )
     from parkfit.storage.session import create_all, session_scope
 
@@ -501,15 +542,18 @@ def status() -> None:
     with session_scope() as session:
         counts = {
             "parking facilities": session.execute(
-                select(func.count()).select_from(ParkingFacility)).scalar(),
-            "parking bays": session.execute(
-                select(func.count()).select_from(ParkingBay)).scalar(),
+                select(func.count()).select_from(ParkingFacility)
+            ).scalar(),
+            "parking bays": session.execute(select(func.count()).select_from(ParkingBay)).scalar(),
             "points of interest": session.execute(
-                select(func.count()).select_from(PointOfInterest)).scalar(),
+                select(func.count()).select_from(PointOfInterest)
+            ).scalar(),
             "availability observations": session.execute(
-                select(func.count()).select_from(AvailabilityObservation)).scalar(),
+                select(func.count()).select_from(AvailabilityObservation)
+            ).scalar(),
             "registered cameras": session.execute(
-                select(func.count()).select_from(CameraSource)).scalar(),
+                select(func.count()).select_from(CameraSource)
+            ).scalar(),
         }
 
     table = Table(title=f"ParkFit NL {__version__}", header_style="bold")
@@ -526,8 +570,9 @@ def status() -> None:
         table.add_row(name, f"{value:,}")
     console.print(table)
     if not HAS_NATIVE:
-        console.print("[yellow]Build the native module for the compiled path: "
-                      ".\\tasks.ps1 build[/yellow]")
+        console.print(
+            "[yellow]Build the native module for the compiled path: .\\tasks.ps1 build[/yellow]"
+        )
 
 
 @app.command()

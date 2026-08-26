@@ -48,8 +48,20 @@ _WS = re.compile(r"\s+")
 #: lets "Rembrandt House Museum" match "Museum Het Rembrandthuis".
 STOPWORDS = frozenset(
     {
-        "de", "het", "een", "der", "den", "van", "in", "op", "aan", "te",
-        "the", "a", "of", "at",
+        "de",
+        "het",
+        "een",
+        "der",
+        "den",
+        "van",
+        "in",
+        "op",
+        "aan",
+        "te",
+        "the",
+        "a",
+        "of",
+        "at",
     }
 )
 
@@ -72,12 +84,29 @@ CATEGORY_SYNONYMS: dict[str, set[str]] = {
 #: Category prominence, used only to break ties between identically-named places.
 #: A museum called "Centraal" is a likelier destination than a bench called "Centraal".
 CATEGORY_IMPORTANCE = {
-    "museum": 0.95, "attraction": 0.90, "stadium": 0.90, "theatre": 0.85,
-    "station": 0.85, "zoo": 0.85, "theme_park": 0.85, "aquarium": 0.80,
-    "gallery": 0.80, "hospital": 0.80, "university": 0.75, "mall": 0.75,
-    "park": 0.70, "arts_centre": 0.70, "cinema": 0.70, "conference_centre": 0.70,
-    "sports_centre": 0.65, "townhall": 0.65, "castle": 0.65, "monument": 0.60,
-    "memorial": 0.55, "garden": 0.55, "place": 0.40,
+    "museum": 0.95,
+    "attraction": 0.90,
+    "stadium": 0.90,
+    "theatre": 0.85,
+    "station": 0.85,
+    "zoo": 0.85,
+    "theme_park": 0.85,
+    "aquarium": 0.80,
+    "gallery": 0.80,
+    "hospital": 0.80,
+    "university": 0.75,
+    "mall": 0.75,
+    "park": 0.70,
+    "arts_centre": 0.70,
+    "cinema": 0.70,
+    "conference_centre": 0.70,
+    "sports_centre": 0.65,
+    "townhall": 0.65,
+    "castle": 0.65,
+    "monument": 0.60,
+    "memorial": 0.55,
+    "garden": 0.55,
+    "place": 0.40,
 }
 
 
@@ -138,8 +167,8 @@ def name_similarity(query: str, candidate: str, category: str | None = None) -> 
     if not matched:
         return 0.0
 
-    coverage = len(matched) / len(q_tokens)   # how much of the query was explained
-    density = len(matched) / len(c_tokens)    # how much of the name was used
+    coverage = len(matched) / len(q_tokens)  # how much of the query was explained
+    density = len(matched) / len(c_tokens)  # how much of the name was used
     # Coverage matters more: a query fully explained by a longer name is a good hit,
     # whereas a name fully consumed by half the query usually is not.
     score = 0.72 * coverage + 0.28 * density
@@ -206,14 +235,14 @@ class HybridGeocoder:
         try:
             for hit in self.pdok.search(query if city is None else f"{query} {city}", rows=limit):
                 results.append(self._from_pdok(hit, query))
-        except Exception as exc:  # noqa: BLE001 - a geocoder outage must not 500 a search
+        except Exception as exc:
             log.warning("PDOK search failed for %r: %s", query, exc)
 
         if not results:
             try:
                 for hit in self.pdok.suggest(query, rows=limit):
                     results.append(self._from_pdok(hit, query))
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 log.warning("PDOK suggest failed for %r: %s", query, exc)
 
         results.sort(key=lambda d: d.confidence, reverse=True)

@@ -83,16 +83,26 @@ class CameraModel:
         In production these come from Amsterdam bay corners, which are published in the
         same RD frame -- so a camera overlooking marked bays needs no field survey.
         """
-        offsets = [(-spread_m, 12.0), (spread_m, 12.0), (-spread_m, 26.0),
-                   (spread_m, 26.0), (0.0, 19.0), (-spread_m / 2, 33.0)]
+        offsets = [
+            (-spread_m, 12.0),
+            (spread_m, 12.0),
+            (-spread_m, 26.0),
+            (spread_m, 26.0),
+            (0.0, 19.0),
+            (-spread_m / 2, 33.0),
+        ]
         points = []
         for ox, oy in offsets:
             world = (self.origin_x + ox, self.origin_y + oy)
             pixel = self.project(*world)
             if pixel is None:
                 continue
-            points.append({"image": [round(pixel[0], 2), round(pixel[1], 2)],
-                           "world": [round(world[0], 3), round(world[1], 3)]})
+            points.append(
+                {
+                    "image": [round(pixel[0], 2), round(pixel[1], 2)],
+                    "world": [round(world[0], 3), round(world[1], 3)],
+                }
+            )
         return points
 
 
@@ -100,7 +110,7 @@ class CameraModel:
 class ParkedVehicle:
     """A vehicle at an exactly-known position along the kerb."""
 
-    along_m: float          # centre, measured from the segment start
+    along_m: float  # centre, measured from the segment start
     length_m: float
     width_m: float
     height_m: float
@@ -133,7 +143,7 @@ class Scene:
 
     image: np.ndarray
     vehicles: list[ParkedVehicle]
-    gaps: list[tuple[float, float]]      # (start_m, end_m) along the kerb
+    gaps: list[tuple[float, float]]  # (start_m, end_m) along the kerb
     kerb_length_m: float
     kerb_y: float
     camera: CameraModel
@@ -156,11 +166,16 @@ class Scene:
             box = _vehicle_box(self.camera, vehicle, self.kerb_y)
             if box is None:
                 continue
-            boxes.append({
-                "x1": round(box[0], 1), "y1": round(box[1], 1),
-                "x2": round(box[2], 1), "y2": round(box[3], 1),
-                "score": 0.93, "label": vehicle.kind,
-            })
+            boxes.append(
+                {
+                    "x1": round(box[0], 1),
+                    "y1": round(box[1], 1),
+                    "x2": round(box[2], 1),
+                    "y2": round(box[3], 1),
+                    "score": 0.93,
+                    "label": vehicle.kind,
+                }
+            )
         return boxes
 
 
@@ -218,9 +233,7 @@ class SceneGenerator:
                 length, width, height = VEHICLE_TYPES[kind]
                 if cursor + length > kerb_length_m:
                     break
-                vehicles.append(
-                    ParkedVehicle(cursor + length / 2, length, width, height, kind)
-                )
+                vehicles.append(ParkedVehicle(cursor + length / 2, length, width, height, kind))
                 # A small random bumper interval, as real parking has.
                 cursor += length + self.rng.uniform(0.35, 0.9)
             else:
@@ -229,8 +242,13 @@ class SceneGenerator:
         gaps = self._gaps(vehicles, kerb_length_m)
         image = self._render(vehicles, kerb_y, kerb_length_m, condition)
         return Scene(
-            image=image, vehicles=vehicles, gaps=gaps, kerb_length_m=kerb_length_m,
-            kerb_y=kerb_y, camera=self.camera, condition=condition,
+            image=image,
+            vehicles=vehicles,
+            gaps=gaps,
+            kerb_length_m=kerb_length_m,
+            kerb_y=kerb_y,
+            camera=self.camera,
+            condition=condition,
         )
 
     @staticmethod
@@ -251,7 +269,10 @@ class SceneGenerator:
 
     # -- rendering ----------------------------------------------------------
     def _render(
-        self, vehicles: list[ParkedVehicle], kerb_y: float, kerb_length_m: float,
+        self,
+        vehicles: list[ParkedVehicle],
+        kerb_y: float,
+        kerb_length_m: float,
         condition: str,
     ) -> np.ndarray:
         cam = self.camera
@@ -269,8 +290,13 @@ class SceneGenerator:
         # Painted bay dividers every 6 m, which is what a calibration is clicked against.
         for metre in range(0, int(kerb_length_m) + 1, 6):
             self._draw_line_world(
-                image, cam.origin_x + metre, kerb_y - 1.0, cam.origin_x + metre, kerb_y + 1.1,
-                (200, 200, 190), 2,
+                image,
+                cam.origin_x + metre,
+                kerb_y - 1.0,
+                cam.origin_x + metre,
+                kerb_y + 1.1,
+                (200, 200, 190),
+                2,
             )
 
         # Far vehicles first, so nearer ones paint over them and produce real occlusion.
@@ -298,8 +324,14 @@ class SceneGenerator:
             _line(image, a, b, tone, 3)
 
     def _draw_line_world(
-        self, image: np.ndarray, x1: float, y1: float, x2: float, y2: float,
-        colour: tuple[int, int, int], width: int,
+        self,
+        image: np.ndarray,
+        x1: float,
+        y1: float,
+        x2: float,
+        y2: float,
+        colour: tuple[int, int, int],
+        width: int,
     ) -> None:
         a = self.camera.project(x1, y1)
         b = self.camera.project(x2, y2)
@@ -331,12 +363,12 @@ class SceneGenerator:
         # Roof corners: the same ground points raised by the vehicle height, which in
         # this projection is a vertical pixel offset scaled by depth.
         roof = []
-        for (x, y), g in zip(corners_ground, ground, strict=True):
+        for (_x, y), g in zip(corners_ground, ground, strict=True):
             dy = y - cam.origin_y
             depth = dy * math.cos(tilt) + cam.height_m * math.sin(tilt)
             roof.append((g[0], g[1] - cam.focal_px * vehicle.height_m / max(depth, 0.5)))
 
-        _fill_quad(image, [ground[0], ground[1], roof[1], roof[0]], body)          # near side
+        _fill_quad(image, [ground[0], ground[1], roof[1], roof[0]], body)  # near side
         _fill_quad(image, [roof[0], roof[1], roof[2], roof[3]], _shade(body, 1.18))  # roof
         _fill_quad(image, [ground[1], ground[2], roof[2], roof[1]], _shade(body, 0.78))  # end
 
@@ -355,9 +387,7 @@ class SceneGenerator:
             for corner in (ground[0], ground[1]):
                 _disc(image, corner[0], corner[1] - 6, 3, (40, 40, 220))
 
-    def _apply_condition(
-        self, image: np.ndarray, condition: str, noise_sigma: float
-    ) -> np.ndarray:
+    def _apply_condition(self, image: np.ndarray, condition: str, noise_sigma: float) -> np.ndarray:
         out = image.astype(np.float32)
 
         if condition == "rain":
@@ -382,8 +412,9 @@ class SceneGenerator:
         return np.clip(out, 0, 255).astype(np.uint8)
 
 
-def _palette(condition: str) -> tuple[tuple[int, int, int], tuple[int, int, int],
-                                      tuple[int, int, int], float]:
+def _palette(
+    condition: str,
+) -> tuple[tuple[int, int, int], tuple[int, int, int], tuple[int, int, int], float]:
     """(sky, road, kerb, noise sigma) for a condition."""
     table = {
         "day": ((150, 165, 180), (78, 80, 84), (150, 148, 142), 3.0),
@@ -398,8 +429,14 @@ def _palette(condition: str) -> tuple[tuple[int, int, int], tuple[int, int, int]
 
 def _vehicle_colour(rng: random.Random, condition: str) -> tuple[int, int, int]:
     palette = [
-        (60, 60, 62), (185, 185, 190), (140, 30, 30), (30, 60, 140),
-        (95, 95, 100), (25, 70, 45), (200, 200, 205), (40, 40, 45),
+        (60, 60, 62),
+        (185, 185, 190),
+        (140, 30, 30),
+        (30, 60, 140),
+        (95, 95, 100),
+        (25, 70, 45),
+        (200, 200, 205),
+        (40, 40, 45),
     ]
     colour = rng.choice(palette)
     if condition in {"night", "dusk"}:
@@ -417,8 +454,8 @@ def _shade(colour: tuple[int, int, int], factor: float) -> tuple[int, int, int]:
 # dependency will eventually stop being run.
 # ---------------------------------------------------------------------------
 def _line(image: np.ndarray, a, b, colour, width: int) -> None:
-    x1, y1 = int(round(a[0])), int(round(a[1]))
-    x2, y2 = int(round(b[0])), int(round(b[1]))
+    x1, y1 = round(a[0]), round(a[1])
+    x2, y2 = round(b[0]), round(b[1])
     steps = max(abs(x2 - x1), abs(y2 - y1), 1)
     for i in range(steps + 1):
         x = int(x1 + (x2 - x1) * i / steps)
@@ -499,15 +536,17 @@ def write_dataset(
         image_path = output_dir / f"scene_{index:03d}.ppm"
         _write_ppm(image_path, scene.image)
         frames.append({"index": index, "detections": scene.detections()})
-        scenes.append({
-            "index": index,
-            "image": image_path.name,
-            "condition": scene.condition,
-            "vehicles": len(scene.vehicles),
-            "kerb_length_m": scene.kerb_length_m,
-            "gaps_m": [[round(a, 4), round(b, 4)] for a, b in scene.gaps],
-            "gap_lengths_m": [round(g, 4) for g in scene.gap_lengths_m],
-        })
+        scenes.append(
+            {
+                "index": index,
+                "image": image_path.name,
+                "condition": scene.condition,
+                "vehicles": len(scene.vehicles),
+                "kerb_length_m": scene.kerb_length_m,
+                "gaps_m": [[round(a, 4), round(b, 4)] for a, b in scene.gaps],
+                "gap_lengths_m": [round(g, 4) for g in scene.gap_lengths_m],
+            }
+        )
 
     manifest = {
         "camera": {

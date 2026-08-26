@@ -32,9 +32,9 @@ from parkfit.ingest.base import BaseAdapter, IngestResult, SourceMeta
 from parkfit.ingest.datex import (
     direct_child,
     direct_text,
-    iter_descendants,
     element_id,
     find_records,
+    iter_descendants,
     parse_datetime,
     parse_float,
     parse_int,
@@ -66,7 +66,7 @@ CAPACITY_TOLERANCE = 1.10
 class OccupancyReading:
     """A validated site-level occupancy reading."""
 
-    __slots__ = ("vacant", "occupied", "ratio", "state", "problems")
+    __slots__ = ("occupied", "problems", "ratio", "state", "vacant")
 
     def __init__(self) -> None:
         self.vacant: int | None = None
@@ -353,7 +353,7 @@ class NdwAdapter(BaseAdapter):
         result = IngestResult(source=f"{self.meta.name}-EmissionZones")
         try:
             root = self._fetch_xml(EMISSION_ZONES)
-        except Exception as exc:  # noqa: BLE001 - upstream availability varies
+        except Exception as exc:
             result.errors.append(f"emission zones unavailable: {exc}")
             result.finished_at = utcnow()
             return result

@@ -40,9 +40,7 @@ class RestrictionVerdict:
         self.reasons.append(reason)
 
 
-def _overlaps(
-    rule: ParkingRestriction, arrival: datetime, departure: datetime
-) -> bool:
+def _overlaps(rule: ParkingRestriction, arrival: datetime, departure: datetime) -> bool:
     """Does the stay intersect the window this rule applies to?
 
     Checked per calendar day of the stay, because a rule keyed to a weekday mask must be
@@ -154,9 +152,7 @@ def evaluate_restrictions(
     for verdict in verdicts.values():
         limit = verdict.max_duration_minutes
         if limit is not None and stay_minutes > limit:
-            verdict.deny(
-                f"maximum stay here is {limit} minutes, you asked for {stay_minutes}"
-            )
+            verdict.deny(f"maximum stay here is {limit} minutes, you asked for {stay_minutes}")
         elif limit is not None:
             verdict.warnings.append(f"maximum stay {limit} minutes")
 

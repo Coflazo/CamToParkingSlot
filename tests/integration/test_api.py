@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from parkfit.storage.models import ParkingFacility, PointOfInterest
+from parkfit.storage.models import PointOfInterest
 
 
 @pytest.fixture
@@ -42,9 +42,15 @@ def seeded_destination(session, seeded_facilities):
     """A point of interest to search for, plus facilities near it."""
     session.add(
         PointOfInterest(
-            source_name="OpenStreetMap", external_id="way/1", name="Rembrandthuis",
-            normalised_name="rembrandthuis", category="museum",
-            lat=52.36937, lon=4.90125, city="Amsterdam", importance=0.95,
+            source_name="OpenStreetMap",
+            external_id="way/1",
+            name="Rembrandthuis",
+            normalised_name="rembrandthuis",
+            category="museum",
+            lat=52.36937,
+            lon=4.90125,
+            city="Amsterdam",
+            importance=0.95,
         )
     )
     session.commit()
@@ -72,10 +78,13 @@ class TestHealth:
 
 class TestAuth:
     def test_register_then_login(self, client):
-        assert client.post(
-            "/v1/auth/register",
-            json={"email": "a@example.com", "password": "a-sufficiently-long-password"},
-        ).status_code == 201
+        assert (
+            client.post(
+                "/v1/auth/register",
+                json={"email": "a@example.com", "password": "a-sufficiently-long-password"},
+            ).status_code
+            == 201
+        )
         response = client.post(
             "/v1/auth/login",
             json={"email": "a@example.com", "password": "a-sufficiently-long-password"},
@@ -93,37 +102,53 @@ class TestAuth:
             "/v1/auth/register",
             json={"email": "c@example.com", "password": "a-sufficiently-long-password"},
         )
-        assert client.post(
-            "/v1/auth/login", json={"email": "c@example.com", "password": "wrong-password-here"}
-        ).status_code == 401
+        assert (
+            client.post(
+                "/v1/auth/login", json={"email": "c@example.com", "password": "wrong-password-here"}
+            ).status_code
+            == 401
+        )
 
     def test_an_unknown_email_is_rejected_the_same_way(self, client):
         """Same status and shape as a wrong password, so the response does not reveal
         which addresses are registered."""
-        assert client.post(
-            "/v1/auth/login",
-            json={"email": "nobody@example.com", "password": "a-sufficiently-long-password"},
-        ).status_code == 401
+        assert (
+            client.post(
+                "/v1/auth/login",
+                json={"email": "nobody@example.com", "password": "a-sufficiently-long-password"},
+            ).status_code
+            == 401
+        )
 
     def test_a_short_password_is_refused(self, client):
-        assert client.post(
-            "/v1/auth/register", json={"email": "d@example.com", "password": "short"}
-        ).status_code == 422
+        assert (
+            client.post(
+                "/v1/auth/register", json={"email": "d@example.com", "password": "short"}
+            ).status_code
+            == 422
+        )
 
     def test_protected_routes_require_a_token(self, client):
         assert client.get("/v1/vehicles").status_code == 401
 
     def test_an_invalid_token_is_rejected(self, client):
-        assert client.get(
-            "/v1/vehicles", headers={"Authorization": "Bearer not-a-real-token"}
-        ).status_code == 401
+        assert (
+            client.get(
+                "/v1/vehicles", headers={"Authorization": "Bearer not-a-real-token"}
+            ).status_code
+            == 401
+        )
 
 
 class TestVehicles:
     def _payload(self, **overrides):
         payload = {
-            "nickname": "Polo", "length_cm": 405.3, "body_width_cm": 175.1,
-            "width_with_mirrors_cm": 194.0, "height_cm": 145.1, "weight_kg": 1105.0,
+            "nickname": "Polo",
+            "length_cm": 405.3,
+            "body_width_cm": 175.1,
+            "width_with_mirrors_cm": 194.0,
+            "height_cm": 145.1,
+            "weight_kg": 1105.0,
         }
         payload.update(overrides)
         return payload
@@ -149,9 +174,9 @@ class TestVehicles:
         assert body["height_with_accessories_cm"] == pytest.approx(145.1)
 
     def test_update_confirms_the_dimension(self, client, registered):
-        vehicle_id = client.post(
-            "/v1/vehicles", headers=registered, json=self._payload()
-        ).json()["id"]
+        vehicle_id = client.post("/v1/vehicles", headers=registered, json=self._payload()).json()[
+            "id"
+        ]
         updated = client.patch(
             f"/v1/vehicles/{vehicle_id}", headers=registered, json={"height_cm": 152.0}
         ).json()
@@ -159,9 +184,9 @@ class TestVehicles:
         assert updated["height_confirmed"] is True
 
     def test_another_users_vehicle_is_not_found(self, client, registered):
-        vehicle_id = client.post(
-            "/v1/vehicles", headers=registered, json=self._payload()
-        ).json()["id"]
+        vehicle_id = client.post("/v1/vehicles", headers=registered, json=self._payload()).json()[
+            "id"
+        ]
 
         client.post(
             "/v1/auth/register",
@@ -173,19 +198,28 @@ class TestVehicles:
         ).json()["access_token"]
 
         # 404 rather than 403: a different status would confirm the id exists.
-        assert client.patch(
-            f"/v1/vehicles/{vehicle_id}",
-            headers={"Authorization": f"Bearer {other}"},
-            json={"height_cm": 200.0},
-        ).status_code == 404
+        assert (
+            client.patch(
+                f"/v1/vehicles/{vehicle_id}",
+                headers={"Authorization": f"Bearer {other}"},
+                json={"height_cm": 200.0},
+            ).status_code
+            == 404
+        )
 
     def test_implausible_dimensions_are_refused(self, client, registered):
-        assert client.post(
-            "/v1/vehicles", headers=registered, json=self._payload(length_cm=-5.0)
-        ).status_code == 422
-        assert client.post(
-            "/v1/vehicles", headers=registered, json=self._payload(height_cm=9999.0)
-        ).status_code == 422
+        assert (
+            client.post(
+                "/v1/vehicles", headers=registered, json=self._payload(length_cm=-5.0)
+            ).status_code
+            == 422
+        )
+        assert (
+            client.post(
+                "/v1/vehicles", headers=registered, json=self._payload(height_cm=9999.0)
+            ).status_code
+            == 422
+        )
 
 
 class TestSearch:
@@ -197,7 +231,8 @@ class TestSearch:
             headers=registered,
             json={
                 "destination": "Rembrandthuis",
-                "origin_lat": 52.3789, "origin_lon": 4.9002,
+                "origin_lat": 52.3789,
+                "origin_lon": 4.9002,
                 "expected_duration_minutes": 120,
                 "preferences": {"max_walk_minutes": 25, "include_on_street": False},
             },
@@ -212,19 +247,17 @@ class TestSearch:
             assert result["evidence"]["source"]
             assert result["evidence"]["freshness"]
             assert result["evidence"]["confidence_label"]
-            assert result["fit"]["verdict"] in {
-                "FITS", "TIGHT_FIT", "UNVERIFIED", "DOES_NOT_FIT"
-            }
+            assert result["fit"]["verdict"] in {"FITS", "TIGHT_FIT", "UNVERIFIED", "DOES_NOT_FIT"}
             assert result["fit"]["explanation"]
 
-    def test_results_are_ordered_by_generalised_cost(
-        self, client, registered, seeded_destination
-    ):
+    def test_results_are_ordered_by_generalised_cost(self, client, registered, seeded_destination):
         body = client.post(
             "/v1/searches",
             headers=registered,
             json={
-                "destination": "Rembrandthuis", "origin_lat": 52.3789, "origin_lon": 4.9002,
+                "destination": "Rembrandthuis",
+                "origin_lat": 52.3789,
+                "origin_lon": 4.9002,
                 "preferences": {"max_walk_minutes": 30, "include_on_street": False},
             },
         ).json()
@@ -233,19 +266,27 @@ class TestSearch:
 
     def test_a_van_is_excluded_from_a_low_garage(self, client, registered, seeded_destination):
         van = client.post(
-            "/v1/vehicles", headers=registered,
+            "/v1/vehicles",
+            headers=registered,
             json={
-                "nickname": "Transporter", "length_cm": 590.0, "body_width_cm": 190.4,
-                "width_with_mirrors_cm": 246.0, "height_cm": 199.0,
-                "height_with_accessories_cm": 232.0, "weight_kg": 2000.0,
+                "nickname": "Transporter",
+                "length_cm": 590.0,
+                "body_width_cm": 190.4,
+                "width_with_mirrors_cm": 246.0,
+                "height_cm": 199.0,
+                "height_with_accessories_cm": 232.0,
+                "weight_kg": 2000.0,
             },
         ).json()["id"]
 
         body = client.post(
-            "/v1/searches", headers=registered,
+            "/v1/searches",
+            headers=registered,
             json={
-                "destination": "Rembrandthuis", "vehicle_id": van,
-                "origin_lat": 52.3789, "origin_lon": 4.9002,
+                "destination": "Rembrandthuis",
+                "vehicle_id": van,
+                "origin_lat": 52.3789,
+                "origin_lon": 4.9002,
                 "preferences": {"max_walk_minutes": 30, "include_on_street": False},
             },
         ).json()
@@ -257,7 +298,8 @@ class TestSearch:
 
     def test_an_unknown_destination_reports_it_rather_than_guessing(self, client, registered):
         body = client.post(
-            "/v1/searches", headers=registered,
+            "/v1/searches",
+            headers=registered,
             json={"destination": "zzzzqqqxx not a real place at all"},
         ).json()
         assert body["results"] == [] or body["warnings"]
@@ -267,23 +309,31 @@ class TestSearch:
         response = client.post(
             "/v1/searches",
             json={
-                "destination": "Rembrandthuis", "origin_lat": 52.3789, "origin_lon": 4.9002,
+                "destination": "Rembrandthuis",
+                "origin_lat": 52.3789,
+                "origin_lon": 4.9002,
                 "preferences": {"max_walk_minutes": 30, "include_on_street": False},
             },
         )
         assert response.status_code == 201
 
     def test_searching_with_a_saved_vehicle_requires_a_token(self, client, seeded_destination):
-        assert client.post(
-            "/v1/searches", json={"destination": "Rembrandthuis", "vehicle_id": 1}
-        ).status_code == 401
+        assert (
+            client.post(
+                "/v1/searches", json={"destination": "Rembrandthuis", "vehicle_id": 1}
+            ).status_code
+            == 401
+        )
 
     def test_an_unknown_vehicle_is_rejected(self, client, registered, seeded_destination):
-        assert client.post(
-            "/v1/searches",
-            headers=registered,
-            json={"destination": "Rembrandthuis", "vehicle_id": 99999},
-        ).status_code == 404
+        assert (
+            client.post(
+                "/v1/searches",
+                headers=registered,
+                json={"destination": "Rembrandthuis", "vehicle_id": 99999},
+            ).status_code
+            == 404
+        )
 
 
 class TestGeocode:
@@ -311,8 +361,7 @@ class TestObservations:
         facility_id = seeded_facilities[0].id
         response = client.post(
             "/v1/observations/user-confirmation",
-            json={"target_kind": "facility", "target_id": facility_id,
-                  "outcome": "was_occupied"},
+            json={"target_kind": "facility", "target_id": facility_id, "outcome": "was_occupied"},
         )
         assert response.status_code == 201
 
@@ -321,21 +370,28 @@ class TestObservations:
         from parkfit.storage.models import AvailabilityObservation, EvidenceSource
 
         session.expire_all()
-        rows = session.execute(
-            select(AvailabilityObservation).where(
-                AvailabilityObservation.target_id == facility_id
+        rows = (
+            session.execute(
+                select(AvailabilityObservation).where(
+                    AvailabilityObservation.target_id == facility_id
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert rows
         # Recorded at user priority: enough to correct a stale feed, not enough to
         # override an operator counting spaces at its own barrier.
         assert rows[0].evidence_source == int(EvidenceSource.USER_CONFIRMATION)
 
     def test_an_invalid_outcome_is_refused(self, client):
-        assert client.post(
-            "/v1/observations/user-confirmation",
-            json={"target_kind": "facility", "target_id": 1, "outcome": "maybe"},
-        ).status_code == 422
+        assert (
+            client.post(
+                "/v1/observations/user-confirmation",
+                json={"target_kind": "facility", "target_id": 1, "outcome": "maybe"},
+            ).status_code
+            == 422
+        )
 
 
 class TestFacilityDetail:
@@ -344,8 +400,10 @@ class TestFacilityDetail:
 
         session.add(
             SourceLicence(
-                source_name="RDW-NPR", dataset_url="https://opendata.rdw.nl/",
-                licence="CC0-1.0", attribution_text="Data: RDW",
+                source_name="RDW-NPR",
+                dataset_url="https://opendata.rdw.nl/",
+                licence="CC0-1.0",
+                attribution_text="Data: RDW",
             )
         )
         session.commit()
@@ -360,6 +418,6 @@ class TestFacilityDetail:
 
 class TestAvailabilityStream:
     def test_invalid_targets_are_refused(self, client):
-        assert client.get(
-            "/v1/availability/stream", params={"targets": "nonsense"}
-        ).status_code == 400
+        assert (
+            client.get("/v1/availability/stream", params={"targets": "nonsense"}).status_code == 400
+        )

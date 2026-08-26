@@ -17,7 +17,6 @@ from parkfit.domain.pricing import estimate_prices
 from parkfit.domain.restrictions import evaluate_restrictions
 from parkfit.domain.vehicle import ACCESSORY_HEIGHT_CM, confirm_dimensions, normalise_plate
 from parkfit.storage.models import (
-    AvailabilityObservation,
     EvidenceSource,
     OccupancyState,
     ParkingRestriction,
@@ -104,16 +103,17 @@ class TestVehicleFit:
         four centimetres, which deleted most of the on-street supply from every search.
         """
         n = self._native()
-        result = n.check_bay(polo.to_native(), 551.0, 196.0, n.BayOrientation.PARALLEL,
-                             n.Margins())
+        result = n.check_bay(polo.to_native(), 551.0, 196.0, n.BayOrientation.PARALLEL, n.Margins())
         assert result.acceptable, result.verdict_name
 
     def test_orientation_changes_the_verdict_for_one_rectangle(self, polo):
         n = self._native()
-        perpendicular = n.check_bay(polo.to_native(), 440.0, 250.0,
-                                    n.BayOrientation.PERPENDICULAR, n.Margins())
-        parallel = n.check_bay(polo.to_native(), 440.0, 250.0, n.BayOrientation.PARALLEL,
-                               n.Margins())
+        perpendicular = n.check_bay(
+            polo.to_native(), 440.0, 250.0, n.BayOrientation.PERPENDICULAR, n.Margins()
+        )
+        parallel = n.check_bay(
+            polo.to_native(), 440.0, 250.0, n.BayOrientation.PARALLEL, n.Margins()
+        )
         assert perpendicular.acceptable
         assert parallel.verdict_name == "DOES_NOT_FIT"
 
@@ -127,8 +127,12 @@ class TestVehicleFit:
         assert clamped.parallel_front_cm > 0.0
         assert clamped.vertical_cm > 0.0
         # And a van still cannot be squeezed into a compact bay.
-        assert n.check_bay(tall_van.to_native(), 460.0, 200.0, n.BayOrientation.PARALLEL,
-                           margins).verdict_name == "DOES_NOT_FIT"
+        assert (
+            n.check_bay(
+                tall_van.to_native(), 460.0, 200.0, n.BayOrientation.PARALLEL, margins
+            ).verdict_name
+            == "DOES_NOT_FIT"
+        )
 
     def test_mirrors_govern_apertures_bodywork_governs_paint(self, polo):
         n = self._native()
@@ -138,15 +142,20 @@ class TestVehicleFit:
         assert n.check_facility(polo.to_native(), gate, n.Margins()).verdict_name == (
             "DOES_NOT_FIT"
         )
-        assert n.check_bay(polo.to_native(), 600.0, 220.0, n.BayOrientation.PERPENDICULAR,
-                           n.Margins()).acceptable
+        assert n.check_bay(
+            polo.to_native(), 600.0, 220.0, n.BayOrientation.PERPENDICULAR, n.Margins()
+        ).acceptable
 
 
 class TestRestrictions:
     def _rule(self, target_id, **kwargs):
         defaults = {
-            "target_kind": "bay", "target_id": target_id, "rule_type": "test",
-            "weekday_mask": 0b1111111, "start_minute": 0, "end_minute": 1440,
+            "target_kind": "bay",
+            "target_id": target_id,
+            "rule_type": "test",
+            "weekday_mask": 0b1111111,
+            "start_minute": 0,
+            "end_minute": 1440,
             "source_name": "test",
         }
         defaults.update(kwargs)
@@ -156,8 +165,10 @@ class TestRestrictions:
         session.add(self._rule(1, permit_required=True, rule_type="permit_only"))
         session.flush()
         verdicts = evaluate_restrictions(
-            session, [("bay", 1)],
-            arrival=datetime.now(UTC), departure=datetime.now(UTC) + timedelta(hours=2),
+            session,
+            [("bay", 1)],
+            arrival=datetime.now(UTC),
+            departure=datetime.now(UTC) + timedelta(hours=2),
             vehicle=polo,
         )
         assert not verdicts[("bay", 1)].allowed
@@ -167,11 +178,17 @@ class TestRestrictions:
         session.add(self._rule(2, disabled_only=True, rule_type="disabled_only"))
         session.flush()
         now = datetime.now(UTC)
-        refused = evaluate_restrictions(session, [("bay", 2)], arrival=now,
-                                        departure=now + timedelta(hours=1), vehicle=polo)
-        allowed = evaluate_restrictions(session, [("bay", 2)], arrival=now,
-                                        departure=now + timedelta(hours=1), vehicle=polo,
-                                        needs_disabled_bay=True)
+        refused = evaluate_restrictions(
+            session, [("bay", 2)], arrival=now, departure=now + timedelta(hours=1), vehicle=polo
+        )
+        allowed = evaluate_restrictions(
+            session,
+            [("bay", 2)],
+            arrival=now,
+            departure=now + timedelta(hours=1),
+            vehicle=polo,
+            needs_disabled_bay=True,
+        )
         assert not refused[("bay", 2)].allowed
         assert allowed[("bay", 2)].allowed
 
@@ -179,8 +196,9 @@ class TestRestrictions:
         session.add(self._rule(3, ev_only=True, rule_type="ev_charging_only"))
         session.flush()
         now = datetime.now(UTC)
-        verdicts = evaluate_restrictions(session, [("bay", 3)], arrival=now,
-                                         departure=now + timedelta(hours=1), vehicle=polo)
+        verdicts = evaluate_restrictions(
+            session, [("bay", 3)], arrival=now, departure=now + timedelta(hours=1), vehicle=polo
+        )
         assert not verdicts[("bay", 3)].allowed
 
     def test_an_electric_car_may_use_a_charging_bay_only_while_charging(self, session, polo):
@@ -188,11 +206,17 @@ class TestRestrictions:
         session.flush()
         polo.is_ev = True
         now = datetime.now(UTC)
-        parking_only = evaluate_restrictions(session, [("bay", 4)], arrival=now,
-                                             departure=now + timedelta(hours=1), vehicle=polo)
-        charging = evaluate_restrictions(session, [("bay", 4)], arrival=now,
-                                         departure=now + timedelta(hours=1), vehicle=polo,
-                                         needs_ev_charging=True)
+        parking_only = evaluate_restrictions(
+            session, [("bay", 4)], arrival=now, departure=now + timedelta(hours=1), vehicle=polo
+        )
+        charging = evaluate_restrictions(
+            session,
+            [("bay", 4)],
+            arrival=now,
+            departure=now + timedelta(hours=1),
+            vehicle=polo,
+            needs_ev_charging=True,
+        )
         assert not parking_only[("bay", 4)].allowed
         assert charging[("bay", 4)].allowed
 
@@ -201,8 +225,13 @@ class TestRestrictions:
         session.add(self._rule(5, forbids_parking=True, start_minute=120, end_minute=240))
         session.flush()
         arrival = datetime(2026, 6, 3, 14, 0, tzinfo=UTC)
-        verdicts = evaluate_restrictions(session, [("bay", 5)], arrival=arrival,
-                                         departure=arrival + timedelta(hours=2), vehicle=polo)
+        verdicts = evaluate_restrictions(
+            session,
+            [("bay", 5)],
+            arrival=arrival,
+            departure=arrival + timedelta(hours=2),
+            vehicle=polo,
+        )
         assert verdicts[("bay", 5)].allowed
 
     def test_a_rule_on_another_weekday_does_not_apply(self, session, polo):
@@ -210,8 +239,13 @@ class TestRestrictions:
         session.add(self._rule(6, forbids_parking=True, weekday_mask=0b0000001))
         session.flush()
         arrival = datetime(2026, 6, 3, 10, 0, tzinfo=UTC)
-        verdicts = evaluate_restrictions(session, [("bay", 6)], arrival=arrival,
-                                         departure=arrival + timedelta(hours=1), vehicle=polo)
+        verdicts = evaluate_restrictions(
+            session,
+            [("bay", 6)],
+            arrival=arrival,
+            departure=arrival + timedelta(hours=1),
+            vehicle=polo,
+        )
         assert verdicts[("bay", 6)].allowed
 
     def test_an_overnight_stay_is_judged_against_every_day_it_spans(self, session, polo):
@@ -220,36 +254,57 @@ class TestRestrictions:
         session.add(self._rule(7, forbids_parking=True, weekday_mask=1 << 5))
         session.flush()
         friday_evening = datetime(2026, 6, 5, 20, 0, tzinfo=UTC)  # Friday
-        verdicts = evaluate_restrictions(session, [("bay", 7)], arrival=friday_evening,
-                                         departure=friday_evening + timedelta(hours=14),
-                                         vehicle=polo)
+        verdicts = evaluate_restrictions(
+            session,
+            [("bay", 7)],
+            arrival=friday_evening,
+            departure=friday_evening + timedelta(hours=14),
+            vehicle=polo,
+        )
         assert not verdicts[("bay", 7)].allowed
 
     def test_a_maximum_stay_shorter_than_the_visit_is_refused(self, session, polo):
         session.add(self._rule(8, max_duration_minutes=60, rule_type="max_duration"))
         session.flush()
         now = datetime.now(UTC)
-        short = evaluate_restrictions(session, [("bay", 8)], arrival=now,
-                                      departure=now + timedelta(minutes=30), vehicle=polo)
-        long = evaluate_restrictions(session, [("bay", 8)], arrival=now,
-                                     departure=now + timedelta(minutes=180), vehicle=polo)
+        short = evaluate_restrictions(
+            session, [("bay", 8)], arrival=now, departure=now + timedelta(minutes=30), vehicle=polo
+        )
+        long = evaluate_restrictions(
+            session, [("bay", 8)], arrival=now, departure=now + timedelta(minutes=180), vehicle=polo
+        )
         assert short[("bay", 8)].allowed
         assert short[("bay", 8)].warnings
         assert not long[("bay", 8)].allowed
 
     def test_a_bay_with_no_rules_is_allowed(self, session, polo):
         now = datetime.now(UTC)
-        verdicts = evaluate_restrictions(session, [("bay", 99)], arrival=now,
-                                         departure=now + timedelta(hours=1), vehicle=polo)
+        verdicts = evaluate_restrictions(
+            session, [("bay", 99)], arrival=now, departure=now + timedelta(hours=1), vehicle=polo
+        )
         assert verdicts[("bay", 99)].allowed
 
 
 class TestEvidenceResolution:
     def test_the_strongest_source_wins(self, session, recent_observation):
-        session.add(recent_observation("facility", 1, evidence=EvidenceSource.STATIC_DATABASE,
-                                       state=OccupancyState.VACANT, vacant=50))
-        session.add(recent_observation("facility", 1, evidence=EvidenceSource.OPERATOR_FEED,
-                                       state=OccupancyState.OCCUPIED, vacant=0))
+        session.add(
+            recent_observation(
+                "facility",
+                1,
+                evidence=EvidenceSource.STATIC_DATABASE,
+                state=OccupancyState.VACANT,
+                vacant=50,
+            )
+        )
+        session.add(
+            recent_observation(
+                "facility",
+                1,
+                evidence=EvidenceSource.OPERATOR_FEED,
+                state=OccupancyState.OCCUPIED,
+                vacant=0,
+            )
+        )
         session.flush()
         resolved = resolve_availability(session, [("facility", 1)])[("facility", 1)]
         assert resolved.evidence is EvidenceSource.OPERATOR_FEED
@@ -276,8 +331,11 @@ class TestEvidenceResolution:
         """Static information is not stale at five minutes old; it is simply static."""
         # Within the six-hour lookback, so the observation is actually found. Beyond it
         # the resolver correctly reports no data at all, which is a different case.
-        session.add(recent_observation("facility", 4, age_s=3 * 3600,
-                                       evidence=EvidenceSource.STATIC_DATABASE))
+        session.add(
+            recent_observation(
+                "facility", 4, age_s=3 * 3600, evidence=EvidenceSource.STATIC_DATABASE
+            )
+        )
         session.flush()
         resolved = resolve_availability(session, [("facility", 4)])[("facility", 4)]
         assert not resolved.stale
@@ -292,19 +350,33 @@ class TestEvidenceResolution:
 
     def test_priors_differ_between_a_kerb_bay_and_a_garage(self):
         garage = ResolvedAvailability(
-            target_kind="facility", target_id=1, state=OccupancyState.UNKNOWN,
-            evidence=EvidenceSource.STATIC_DATABASE, observed_at=None, age_s=float("inf"),
+            target_kind="facility",
+            target_id=1,
+            state=OccupancyState.UNKNOWN,
+            evidence=EvidenceSource.STATIC_DATABASE,
+            observed_at=None,
+            age_s=float("inf"),
             confidence=0.0,
         )
         metered_bay = ResolvedAvailability(
-            target_kind="bay", target_id=2, state=OccupancyState.UNKNOWN,
-            evidence=EvidenceSource.STATIC_DATABASE, observed_at=None, age_s=float("inf"),
-            confidence=0.0, metered=True,
+            target_kind="bay",
+            target_id=2,
+            state=OccupancyState.UNKNOWN,
+            evidence=EvidenceSource.STATIC_DATABASE,
+            observed_at=None,
+            age_s=float("inf"),
+            confidence=0.0,
+            metered=True,
         )
         free_bay = ResolvedAvailability(
-            target_kind="bay", target_id=3, state=OccupancyState.UNKNOWN,
-            evidence=EvidenceSource.STATIC_DATABASE, observed_at=None, age_s=float("inf"),
-            confidence=0.0, metered=False,
+            target_kind="bay",
+            target_id=3,
+            state=OccupancyState.UNKNOWN,
+            evidence=EvidenceSource.STATIC_DATABASE,
+            observed_at=None,
+            age_s=float("inf"),
+            confidence=0.0,
+            metered=False,
         )
         # A garage has many interchangeable spaces; one named kerb bay does not.
         assert garage.prior > free_bay.prior > metered_bay.prior
@@ -339,34 +411,49 @@ class TestPricing:
         """NIET FISCAAL usually means permit-controlled rather than genuinely free, and
         the regime data does not always say which."""
         free_bay = next(b for b in seeded_bays if not b.fiscal)
-        prices = estimate_prices(session, [(("bay", free_bay.id), "on_street_bay")],
-                                 arrival=datetime.now(UTC), duration_minutes=120)
+        prices = estimate_prices(
+            session,
+            [(("bay", free_bay.id), "on_street_bay")],
+            arrival=datetime.now(UTC),
+            duration_minutes=120,
+        )
         price, note = prices[("bay", free_bay.id)]
         assert price == 0.0
         assert "check the signs" in note
 
     def test_a_metered_amsterdam_bay_uses_the_city_rate(self, session, seeded_bays):
         bay = seeded_bays[0]
-        prices = estimate_prices(session, [(("bay", bay.id), "on_street_bay")],
-                                 arrival=datetime.now(UTC), duration_minutes=120)
+        prices = estimate_prices(
+            session,
+            [(("bay", bay.id), "on_street_bay")],
+            arrival=datetime.now(UTC),
+            duration_minutes=120,
+        )
         price, note = prices[("bay", bay.id)]
         assert price == pytest.approx(15.0, abs=0.01)  # 7.50/hour, two hours
         assert "Amsterdam" in note
 
     def test_every_price_carries_a_provenance_note(self, session, seeded_facilities):
         targets = [(("facility", f.id), f.kind) for f in seeded_facilities]
-        prices = estimate_prices(session, targets, arrival=datetime.now(UTC),
-                                 duration_minutes=90)
+        prices = estimate_prices(session, targets, arrival=datetime.now(UTC), duration_minutes=90)
         assert len(prices) == len(seeded_facilities)
         for _price, note in prices.values():
             assert note
 
     def test_price_scales_with_duration(self, session, seeded_facilities):
         facility = seeded_facilities[0]
-        short = estimate_prices(session, [(("facility", facility.id), "garage")],
-                                arrival=datetime.now(UTC), duration_minutes=60)
-        long = estimate_prices(session, [(("facility", facility.id), "garage")],
-                               arrival=datetime.now(UTC), duration_minutes=240)
+        short = estimate_prices(
+            session,
+            [(("facility", facility.id), "garage")],
+            arrival=datetime.now(UTC),
+            duration_minutes=60,
+        )
+        long = estimate_prices(
+            session,
+            [(("facility", facility.id), "garage")],
+            arrival=datetime.now(UTC),
+            duration_minutes=240,
+        )
         assert long[("facility", facility.id)][0] > short[("facility", facility.id)][0]
 
 
@@ -378,10 +465,19 @@ class TestDeduplication:
             self.capacity, self.max_height_cm, self.source_name = capacity, height, source
 
     def test_the_same_garage_from_two_sources_is_merged(self):
-        rdw = self._Candidate(("facility", 1), "garage", "Garage The Bank (Amsterdam)",
-                              52.36620, 4.89860, 110, 210.0, "RDW-NPR")
-        osm = self._Candidate(("facility", 2), "garage", "The Bank",
-                              52.36625, 4.89855, None, None, "OpenStreetMap")
+        rdw = self._Candidate(
+            ("facility", 1),
+            "garage",
+            "Garage The Bank (Amsterdam)",
+            52.36620,
+            4.89860,
+            110,
+            210.0,
+            "RDW-NPR",
+        )
+        osm = self._Candidate(
+            ("facility", 2), "garage", "The Bank", 52.36625, 4.89855, None, None, "OpenStreetMap"
+        )
         merged = merge_duplicates([rdw, osm])
         assert len(merged) == 1
         # The union of what is known, not merely the better record.
@@ -389,18 +485,35 @@ class TestDeduplication:
         assert merged[0].capacity == 110
 
     def test_genuinely_different_garages_are_kept(self):
-        a = self._Candidate(("facility", 1), "garage", "Garage The Bank", 52.36620, 4.89860,
-                            110, 210.0, "RDW-NPR")
-        b = self._Candidate(("facility", 2), "garage", "Parkeergarage Rokin", 52.3700, 4.8920,
-                            None, None, "OpenStreetMap")
+        a = self._Candidate(
+            ("facility", 1), "garage", "Garage The Bank", 52.36620, 4.89860, 110, 210.0, "RDW-NPR"
+        )
+        b = self._Candidate(
+            ("facility", 2),
+            "garage",
+            "Parkeergarage Rokin",
+            52.3700,
+            4.8920,
+            None,
+            None,
+            "OpenStreetMap",
+        )
         assert len(merge_duplicates([a, b])) == 2
 
     def test_bays_are_never_merged(self):
         """Individual marked bays sit metres apart and are distinct spaces; collapsing
         them would delete real parking supply."""
         bays = [
-            self._Candidate(("bay", i), "on_street_bay", "Street bay",
-                            52.3690 + i * 1e-5, 4.9010, None, None, "Amsterdam-Parkeervakken")
+            self._Candidate(
+                ("bay", i),
+                "on_street_bay",
+                "Street bay",
+                52.3690 + i * 1e-5,
+                4.9010,
+                None,
+                None,
+                "Amsterdam-Parkeervakken",
+            )
             for i in range(5)
         ]
         assert len(merge_duplicates(bays)) == 5

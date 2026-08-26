@@ -97,7 +97,7 @@ class CandidateCamera:
 
     def suggested_camera_id(self) -> str:
         slug = re.sub(r"[^a-z0-9]+", "_", (self.title or self.page_url).lower()).strip("_")
-        return f"{self.source_site}_{slug[:48]}" or f"{self.source_site}_camera"
+        return f"{self.source_site}_{slug[:48] or 'camera'}"
 
 
 class RobotsCache:
@@ -189,7 +189,7 @@ class SourceAuditor:
         for site, url in sources:
             try:
                 candidates.extend(self.audit_site(site, url, max_candidates=max_per_site))
-            except Exception as exc:  # noqa: BLE001 - one bad site must not end the audit
+            except Exception as exc:
                 log.warning("audit of %s failed: %s", site, exc)
                 candidates.append(
                     CandidateCamera(
@@ -233,9 +233,7 @@ class SourceAuditor:
         # Streams the page declares, plus any it requested while rendering.
         listing_streams = self._merge_streams(self._extract_streams(html), observed)
         for stream in listing_streams[:max_candidates]:
-            candidates.append(
-                self._build_candidate(site, url, stream, terms_url, verdict)
-            )
+            candidates.append(self._build_candidate(site, url, stream, terms_url, verdict))
 
         # Then the individual camera pages the listing links to.
         for page in self._extract_camera_pages(url, html)[:max_candidates]:
@@ -279,7 +277,11 @@ class SourceAuditor:
         return candidates
 
     def _build_candidate(
-        self, site: str, page_url: str, stream: str, terms_url: str | None,
+        self,
+        site: str,
+        page_url: str,
+        stream: str,
+        terms_url: str | None,
         verdict: RobotsVerdict,
     ) -> CandidateCamera:
         notes = [verdict.detail]
@@ -355,10 +357,13 @@ class SourceAuditor:
         def record(request) -> None:
             candidate = request.url
             lowered = candidate.lower()
-            if any(
-                token in lowered
-                for token in (".m3u8", ".mpd", ".ts?", "/mjpg", "/mjpeg", "rtsp://")
-            ) and candidate not in media:
+            if (
+                any(
+                    token in lowered
+                    for token in (".m3u8", ".mpd", ".ts?", "/mjpg", "/mjpeg", "rtsp://")
+                )
+                and candidate not in media
+            ):
                 media.append(candidate)
 
         try:
@@ -377,7 +382,7 @@ class SourceAuditor:
                     return page.content(), media
                 finally:
                     browser.close()
-        except Exception as exc:  # noqa: BLE001 - browser faults are not audit failures
+        except Exception as exc:
             log.debug("render failed for %s: %s", url, exc)
             return "", media
 
@@ -405,10 +410,29 @@ class SourceAuditor:
     #: crawler wanders into WordPress feeds, theme assets and every language variant of
     #: the same listing, and reports forty candidates that are all the page it started on.
     _PAGE_EXCLUSIONS = (
-        "/feed", "/wp-json", "/wp-content", "/wp-includes", "/wp-admin",
-        "/comments", "/tag/", "/category/", "/author/", "/page/",
-        ".css", ".js", ".xml", ".rss", ".json", ".png", ".svg", ".ico",
-        "/login", "/register", "/account", "/privacy", "/terms",
+        "/feed",
+        "/wp-json",
+        "/wp-content",
+        "/wp-includes",
+        "/wp-admin",
+        "/comments",
+        "/tag/",
+        "/category/",
+        "/author/",
+        "/page/",
+        ".css",
+        ".js",
+        ".xml",
+        ".rss",
+        ".json",
+        ".png",
+        ".svg",
+        ".ico",
+        "/login",
+        "/register",
+        "/account",
+        "/privacy",
+        "/terms",
     )
 
     #: Two-letter language prefixes, so /it/webcam/... is not mistaken for a new camera.
@@ -486,7 +510,13 @@ def render_audit_report(candidates: list[CandidateCamera]) -> str:
     for status, count in sorted(by_status.items(), key=lambda kv: -kv[1]):
         lines.append(f"| `{status}` | {count} | {meanings.get(status, '')} |")
 
-    lines += ["", "## Candidates", "", "| Site | Page | Stream | Type | Status |", "| --- | --- | --- | --- | --- |"]
+    lines += [
+        "",
+        "## Candidates",
+        "",
+        "| Site | Page | Stream | Type | Status |",
+        "| --- | --- | --- | --- | --- |",
+    ]
     for candidate in candidates[:200]:
         stream = (candidate.stream_url or "-")[:60]
         lines.append(

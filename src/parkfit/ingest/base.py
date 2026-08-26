@@ -182,7 +182,11 @@ class BaseAdapter(ABC):
         return payload
 
     def fetch_text(
-        self, url: str, params: dict[str, Any] | None = None, *, headers: dict[str, str] | None = None
+        self,
+        url: str,
+        params: dict[str, Any] | None = None,
+        *,
+        headers: dict[str, str] | None = None,
     ) -> str:
         last: Exception | None = None
         for attempt in range(self.settings.http_max_retries):
