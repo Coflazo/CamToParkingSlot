@@ -9,6 +9,7 @@ data is in the database -- rather than a bare "ok". A parking service that answe
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -24,7 +25,12 @@ from parkfit.api.schemas import HealthResponse
 from parkfit.config import get_settings
 from parkfit.native import HAS_NATIVE, native_version
 from parkfit.services.ledger import flush_ledger
-from parkfit.storage.models import AvailabilityObservation, ParkingBay, ParkingFacility, PointOfInterest
+from parkfit.storage.models import (
+    AvailabilityObservation,
+    ParkingBay,
+    ParkingFacility,
+    PointOfInterest,
+)
 from parkfit.storage.session import checkpoint, create_all, session_scope
 
 log = logging.getLogger(__name__)
@@ -58,10 +64,8 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         flusher.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await flusher
-        except asyncio.CancelledError:
-            pass
         # One last drain so a clean shutdown does not lose the tail.
         await asyncio.to_thread(flush_ledger)
         log.info("ParkFit NL shutting down")
@@ -77,7 +81,7 @@ async def _flush_recommendations_periodically(interval_s: float = 20.0) -> None:
                 log.debug("flushed %d recommendations", written)
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # noqa: BLE001 - a flush fault must not kill the app
+        except Exception as exc:
             log.warning("recommendation flush failed: %s", exc)
 
 
@@ -126,16 +130,22 @@ def health() -> HealthResponse:
     one_hour_ago = (datetime.now(UTC) - timedelta(hours=1)).replace(tzinfo=None)
 
     with session_scope() as session:
-        facilities = session.execute(
-            select(func.count()).select_from(ParkingFacility).where(ParkingFacility.active)
-        ).scalar() or 0
+        facilities = (
+            session.execute(
+                select(func.count()).select_from(ParkingFacility).where(ParkingFacility.active)
+            ).scalar()
+            or 0
+        )
         bays = session.execute(select(func.count()).select_from(ParkingBay)).scalar() or 0
         pois = session.execute(select(func.count()).select_from(PointOfInterest)).scalar() or 0
-        live = session.execute(
-            select(func.count())
-            .select_from(AvailabilityObservation)
-            .where(AvailabilityObservation.observed_at >= one_hour_ago)
-        ).scalar() or 0
+        live = (
+            session.execute(
+                select(func.count())
+                .select_from(AvailabilityObservation)
+                .where(AvailabilityObservation.observed_at >= one_hour_ago)
+            ).scalar()
+            or 0
+        )
 
     from parkfit.routing.provider import RoutingService
 

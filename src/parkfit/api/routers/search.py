@@ -95,9 +95,7 @@ async def create_search(
             )
         vehicle = (
             await session.execute(
-                select(Vehicle).where(
-                    Vehicle.id == payload.vehicle_id, Vehicle.user_id == user.id
-                )
+                select(Vehicle).where(Vehicle.id == payload.vehicle_id, Vehicle.user_id == user.id)
             )
         ).scalar_one_or_none()
         if vehicle is None:

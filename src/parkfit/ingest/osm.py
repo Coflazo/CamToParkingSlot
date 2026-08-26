@@ -232,9 +232,7 @@ class OsmAdapter(BaseAdapter):
                 facility = existing.get(external_id)
                 created = facility is None
                 if facility is None:
-                    facility = ParkingFacility(
-                        source_name=self.meta.name, external_id=external_id
-                    )
+                    facility = ParkingFacility(source_name=self.meta.name, external_id=external_id)
                     session.add(facility)
                     existing[external_id] = facility
 
@@ -319,18 +317,14 @@ def ingest_pois(
         existing = {
             p.external_id: p
             for p in session.execute(
-                select(PointOfInterest).where(
-                    PointOfInterest.source_name == adapter.meta.name
-                )
+                select(PointOfInterest).where(PointOfInterest.source_name == adapter.meta.name)
             ).scalars()
         }
         for poi in pois:
             row = existing.get(poi.osm_id)
             created = row is None
             if row is None:
-                row = PointOfInterest(
-                    source_name=adapter.meta.name, external_id=poi.osm_id
-                )
+                row = PointOfInterest(source_name=adapter.meta.name, external_id=poi.osm_id)
                 session.add(row)
                 existing[poi.osm_id] = row
 

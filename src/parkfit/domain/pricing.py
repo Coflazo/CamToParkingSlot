@@ -73,9 +73,7 @@ def estimate_price(
             # still be restricted by sign, which the legality check handles separately.
             return 0.0, "free (unmetered bay)"
         city = _city_for_bay(session, bay)
-        rate = CITY_ONSTREET_EUR_PER_HOUR.get(
-            (city or "").lower(), DEFAULT_ONSTREET_EUR_PER_HOUR
-        )
+        rate = CITY_ONSTREET_EUR_PER_HOUR.get((city or "").lower(), DEFAULT_ONSTREET_EUR_PER_HOUR)
         return round(rate * hours, 2), f"typical on-street rate for {city or 'this area'}"
 
     facility = session.get(ParkingFacility, key[1])
@@ -141,8 +139,7 @@ def estimate_prices(
     if bay_ids:
         bays = {
             b.id: b
-            for b in session.execute(select(ParkingBay).where(ParkingBay.id.in_(bay_ids)))
-            .scalars()
+            for b in session.execute(select(ParkingBay).where(ParkingBay.id.in_(bay_ids))).scalars()
         }
     facilities = {}
     if facility_ids:

@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --extra dev --extra audit --extra ml
+
+      - name: Build the C++ core and Python extension
+        shell: pwsh
+        run: .\tasks.ps1 build
+
+      # Run the binaries directly rather than through ctest, so a failing assertion
+      # prints its file, line and values in the log instead of a bare exit code.
+      - name: C++ tests
+        shell: pwsh
+        run: |
+          $failed = $false
+          foreach ($t in @('test_geo','test_fit','test_rank','test_index','test_vision')) {
+            Write-Host "== $t"
+            & ".\build\bin\$t.exe"
+            if ($LASTEXITCODE -ne 0) { $failed = $true }
+          }
+          if ($failed) { exit 1 }
+
+      # Network-marked tests are excluded: upstream availability is not this repository's
+      # to guarantee, and a red build caused by someone else's outage teaches nothing.
+      - name: Python tests
+        run: uv run pytest tests -q -m "not network"
+
+      - name: Lint
+        run: |
+          uv run ruff check src tests
+          uv run ruff format --check src tests
+
+      - name: Accuracy targets
+        run: uv run pf evaluate --quick
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build

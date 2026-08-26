@@ -70,7 +70,9 @@ async def facility_detail(
             ),
             freshness=describe_freshness(availability),
             confidence_label=(
-                "DATA_CURRENTLY_STALE" if availability.stale else "AVAILABILITY_REPORTED_BY_OPERATOR"
+                "DATA_CURRENTLY_STALE"
+                if availability.stale
+                else "AVAILABILITY_REPORTED_BY_OPERATOR"
             ),
             stale=availability.stale,
             conflicting_sources=availability.conflicting_sources,

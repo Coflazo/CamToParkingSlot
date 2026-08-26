@@ -18,7 +18,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_DIR = REPO_ROOT / "data"
 
 
-class Environment(str, enum.Enum):
+class Environment(enum.StrEnum):
     DEV = "dev"
     PROD = "prod"
 

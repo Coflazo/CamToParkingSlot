@@ -1,58 +1,58 @@
 {
  "metrics": {
-  "false_free_rate": 0.006452,
-  "vacant_recall": 0.919403,
-  "vacant_precision": 0.990354,
+  "false_free_rate": 0.005634,
+  "vacant_recall": 0.933878,
+  "vacant_precision": 0.991334,
   "false_fit_rate": 0.0,
   "false_reject_rate": 0.0,
-  "gap_mae_m": 0.000932,
-  "gap_p95_m": 0.002433,
-  "gap_max_m": 0.002906,
-  "search_median_ms": 163.6511,
-  "search_p95_ms": 182.1242,
-  "search_max_ms": 182.1242
+  "gap_mae_m": 0.001032,
+  "gap_p95_m": 0.00251,
+  "gap_max_m": 0.003038,
+  "search_median_ms": 146.4542,
+  "search_p95_ms": 214.8063,
+  "search_max_ms": 214.8063
  },
  "counts": {
-  "trials": 800,
-  "truly_occupied": 465,
-  "truly_vacant": 335,
-  "false_free": 3,
-  "missed_vacant": 27,
-  "samples": 1200,
-  "accepted": 435,
+  "trials": 3000,
+  "truly_occupied": 1775,
+  "truly_vacant": 1225,
+  "false_free": 10,
+  "missed_vacant": 81,
+  "samples": 4000,
+  "accepted": 1413,
   "false_fits": 0,
   "false_rejects": 0,
-  "scenes": 18,
-  "gaps_matched": 41,
+  "scenes": 60,
+  "gaps_matched": 129,
   "gaps_missed": 0,
   "gaps_spurious": 0,
-  "runs": 6,
+  "runs": 12,
   "empty_results": 0
  },
  "per_condition": {
   "day": {
-   "mae_m": 0.0006848577802249048,
-   "count": 6
+   "mae_m": 0.0009340714102262479,
+   "count": 22
   },
   "dusk": {
-   "mae_m": 0.0008851535200600225,
-   "count": 10
+   "mae_m": 0.0008997637437197655,
+   "count": 22
   },
   "glare": {
-   "mae_m": 0.0007591625801358267,
-   "count": 6
+   "mae_m": 0.0010887493312463753,
+   "count": 19
   },
   "night": {
-   "mae_m": 0.0012539921686146593,
-   "count": 8
+   "mae_m": 0.0010712713286334043,
+   "count": 21
   },
   "overcast": {
-   "mae_m": 0.0005461238306886015,
-   "count": 6
+   "mae_m": 0.0011914881856626774,
+   "count": 23
   },
   "rain": {
-   "mae_m": 0.0014806782959347232,
-   "count": 5
+   "mae_m": 0.0010102284410347712,
+   "count": 22
   }
  },
  "notes": [],

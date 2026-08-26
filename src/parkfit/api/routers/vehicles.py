@@ -64,9 +64,7 @@ async def list_vehicles(
     user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
 ) -> list[VehicleResponse]:
     rows = (
-        (await session.execute(select(Vehicle).where(Vehicle.user_id == user.id)))
-        .scalars()
-        .all()
+        (await session.execute(select(Vehicle).where(Vehicle.user_id == user.id))).scalars().all()
     )
     return [VehicleResponse.model_validate(v) for v in rows]
 

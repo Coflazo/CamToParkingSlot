@@ -42,9 +42,9 @@ def _solve_homography(image_points, world_points):
         distances = np.linalg.norm(arr - centre, axis=1)
         mean_distance = distances.mean()
         scale = np.sqrt(2.0) / mean_distance if mean_distance > 1e-12 else 1.0
-        matrix = np.array([[scale, 0, -scale * centre[0]],
-                           [0, scale, -scale * centre[1]],
-                           [0, 0, 1.0]])
+        matrix = np.array(
+            [[scale, 0, -scale * centre[0]], [0, scale, -scale * centre[1]], [0, 0, 1.0]]
+        )
         return matrix, (arr - centre) * scale
 
     ti, src = normalise(image_points)
@@ -65,8 +65,7 @@ def _apply(h, x: float, y: float) -> tuple[float, float]:
     w = h[2, 0] * x + h[2, 1] * y + h[2, 2]
     if abs(w) < 1e-12:
         return 0.0, 0.0
-    return ((h[0, 0] * x + h[0, 1] * y + h[0, 2]) / w,
-            (h[1, 0] * x + h[1, 1] * y + h[1, 2]) / w)
+    return ((h[0, 0] * x + h[0, 1] * y + h[0, 2]) / w, (h[1, 0] * x + h[1, 1] * y + h[1, 2]) / w)
 
 
 def _project_onto_segment(px, py, ax, ay, bx, by) -> tuple[float, float]:

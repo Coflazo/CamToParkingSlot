@@ -126,8 +126,12 @@ def evaluate_gap_measurement(
         result.metrics["gap_max_m"] = errors[-1]
 
     result.counts.update(
-        {"scenes": scenes, "gaps_matched": matched, "gaps_missed": missed,
-         "gaps_spurious": spurious}
+        {
+            "scenes": scenes,
+            "gaps_matched": matched,
+            "gaps_missed": missed,
+            "gaps_spurious": spurious,
+        }
     )
     for condition, values in sorted(by_condition.items()):
         result.per_condition[condition] = {
@@ -139,9 +143,8 @@ def evaluate_gap_measurement(
 
 def _measure_scene(scene, image_points, world_points) -> list[float]:
     """Run one scene through the same geometry the worker uses."""
-    from parkfit.native import native  # noqa: F401  (guarded by the caller)
-
     from parkfit.ml.evaluate import _cpp_bridge
+    from parkfit.native import native  # noqa: F401  (guarded by the caller)
 
     return _cpp_bridge.measure_gaps(
         image_points=image_points,
@@ -210,8 +213,12 @@ def evaluate_fit_engine(*, samples: int = 4000, seed: int = 11) -> EvaluationRes
     result.metrics["false_fit_rate"] = false_fits / max(1, accepted)
     result.metrics["false_reject_rate"] = false_rejects / max(1, samples)
     result.counts.update(
-        {"samples": samples, "accepted": accepted, "false_fits": false_fits,
-         "false_rejects": false_rejects}
+        {
+            "samples": samples,
+            "accepted": accepted,
+            "false_fits": false_fits,
+            "false_rejects": false_rejects,
+        }
     )
     return result
 
@@ -269,8 +276,13 @@ def evaluate_state_machine(*, trials: int = 3000, seed: int = 5) -> EvaluationRe
     result.metrics["vacant_recall"] = detected_vacant / max(1, true_vacant)
     result.metrics["vacant_precision"] = detected_vacant / max(1, detected_vacant + false_free)
     result.counts.update(
-        {"trials": trials, "truly_occupied": true_occupied, "truly_vacant": true_vacant,
-         "false_free": false_free, "missed_vacant": missed_vacant}
+        {
+            "trials": trials,
+            "truly_occupied": true_occupied,
+            "truly_vacant": true_vacant,
+            "false_free": false_free,
+            "missed_vacant": missed_vacant,
+        }
     )
     return result
 
@@ -290,12 +302,18 @@ def evaluate_search_latency(*, runs: int = 12) -> EvaluationResult:
         result.notes.append(f"search not available: {exc}")
         return result
 
-    destinations = ["Rembrandthuis", "Van Gogh Museum", "Artis", "Dam", "Rijksmuseum",
-                    "Vondelpark"]
+    destinations = ["Rembrandthuis", "Van Gogh Museum", "Artis", "Dam", "Rijksmuseum", "Vondelpark"]
     vehicle = VehicleProfile(
-        id="eval", length_cm=405.0, body_width_cm=175.0, width_with_mirrors_cm=194.0,
-        height_cm=145.0, height_with_accessories_cm=145.0, weight_kg=1100.0,
-        length_confirmed=True, width_confirmed=True, height_confirmed=True,
+        id="eval",
+        length_cm=405.0,
+        body_width_cm=175.0,
+        width_with_mirrors_cm=194.0,
+        height_cm=145.0,
+        height_with_accessories_cm=145.0,
+        weight_kg=1100.0,
+        length_confirmed=True,
+        width_confirmed=True,
+        height_confirmed=True,
     )
 
     timings: list[float] = []
@@ -306,18 +324,25 @@ def evaluate_search_latency(*, runs: int = 12) -> EvaluationResult:
             # One warm-up: the first call loads the road graph and builds the spatial
             # index, which is a process-start cost rather than a per-search one.
             engine.search(
-                SearchRequest(destination=destinations[0], vehicle=vehicle,
-                              origin_lat=52.3789, origin_lon=4.9002,
-                              arrival_time=datetime.now(UTC))
+                SearchRequest(
+                    destination=destinations[0],
+                    vehicle=vehicle,
+                    origin_lat=52.3789,
+                    origin_lon=4.9002,
+                    arrival_time=datetime.now(UTC),
+                )
             )
             for index in range(runs):
                 destination = destinations[index % len(destinations)]
                 started = time.perf_counter()
                 response = engine.search(
                     SearchRequest(
-                        destination=destination, vehicle=vehicle,
-                        origin_lat=52.3789, origin_lon=4.9002,
-                        arrival_time=datetime.now(UTC), duration_minutes=120,
+                        destination=destination,
+                        vehicle=vehicle,
+                        origin_lat=52.3789,
+                        origin_lon=4.9002,
+                        arrival_time=datetime.now(UTC),
+                        duration_minutes=120,
                         preferences=SearchPreferences(max_walk_minutes=15),
                     )
                 )
@@ -361,8 +386,15 @@ def run_all(*, scenes: int = 60, quick: bool = False) -> EvaluationResult:
 def format_report(result: EvaluationResult) -> str:
     """Render the metric table, ordered with the metric that matters first."""
     lines: list[str] = []
-    order = ["false_free_rate", "vacant_precision", "vacant_recall", "false_fit_rate",
-             "gap_mae_m", "gap_p95_m", "search_p95_ms"]
+    order = [
+        "false_free_rate",
+        "vacant_precision",
+        "vacant_recall",
+        "false_fit_rate",
+        "gap_mae_m",
+        "gap_p95_m",
+        "search_p95_ms",
+    ]
 
     header = f"{'metric':<38} {'measured':>12} {'target':>10}   verdict"
     lines.append(header)
@@ -406,8 +438,7 @@ def format_report(result: EvaluationResult) -> str:
         lines.append("gap error by lighting condition")
         for condition, stats in result.per_condition.items():
             lines.append(
-                f"  {condition:<14} MAE {stats['mae_m']:.3f} m over "
-                f"{int(stats['count'])} gaps"
+                f"  {condition:<14} MAE {stats['mae_m']:.3f} m over {int(stats['count'])} gaps"
             )
 
     if result.counts:
@@ -424,13 +455,16 @@ def write_report(result: EvaluationResult, path: Path) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "metrics": {k: (round(v, 6) if isinstance(v, float) else v)
-                    for k, v in result.metrics.items()},
+        "metrics": {
+            k: (round(v, 6) if isinstance(v, float) else v) for k, v in result.metrics.items()
+        },
         "counts": result.counts,
         "per_condition": result.per_condition,
         "notes": result.notes,
-        "targets": {k: {"target": t.target, "higher_is_better": t.higher_is_better,
-                        "unit": t.unit} for k, t in TARGETS.items()},
+        "targets": {
+            k: {"target": t.target, "higher_is_better": t.higher_is_better, "unit": t.unit}
+            for k, t in TARGETS.items()
+        },
     }
     path.write_text(json.dumps(payload, indent=1), encoding="utf-8")
     return path

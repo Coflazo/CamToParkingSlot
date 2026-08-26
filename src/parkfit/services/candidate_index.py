@@ -66,12 +66,10 @@ class _PythonGrid:
     def query_radius(self, lat: float, lon: float, radius_m: float, _max: int = 0):
         from parkfit.geo.rd import haversine_m
 
-        span_lat = int(math.ceil(math.degrees(radius_m / 6371008.8) / self.lat_step))
-        span_lon = int(
-            math.ceil(
-                (math.degrees(radius_m / 6371008.8) / max(0.05, math.cos(math.radians(lat))))
-                / self.lon_step
-            )
+        span_lat = math.ceil(math.degrees(radius_m / 6371008.8) / self.lat_step)
+        span_lon = math.ceil(
+            (math.degrees(radius_m / 6371008.8) / max(0.05, math.cos(math.radians(lat))))
+            / self.lon_step
         )
         cx, cy = int(lon // self.lon_step), int(lat // self.lat_step)
         hits = []

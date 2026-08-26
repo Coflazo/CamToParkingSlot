@@ -11,8 +11,8 @@ from __future__ import annotations
 import os
 import shutil
 from collections.abc import Iterator
-from pathlib import Path
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -63,10 +63,19 @@ def polo():
     from parkfit.domain.vehicle import VehicleProfile
 
     return VehicleProfile(
-        id="veh_polo", nickname="Polo", make="Volkswagen", model="Polo",
-        length_cm=405.3, body_width_cm=175.1, width_with_mirrors_cm=194.0,
-        height_cm=145.1, height_with_accessories_cm=145.1, weight_kg=1105.0,
-        length_confirmed=True, width_confirmed=True, height_confirmed=True,
+        id="veh_polo",
+        nickname="Polo",
+        make="Volkswagen",
+        model="Polo",
+        length_cm=405.3,
+        body_width_cm=175.1,
+        width_with_mirrors_cm=194.0,
+        height_cm=145.1,
+        height_with_accessories_cm=145.1,
+        weight_kg=1105.0,
+        length_confirmed=True,
+        width_confirmed=True,
+        height_confirmed=True,
         weight_confirmed=True,
     )
 
@@ -77,9 +86,17 @@ def tall_van():
     from parkfit.domain.vehicle import VehicleProfile
 
     return VehicleProfile(
-        id="veh_van", nickname="Transporter", length_cm=590.0, body_width_cm=190.4,
-        width_with_mirrors_cm=246.0, height_cm=199.0, height_with_accessories_cm=232.0,
-        weight_kg=2000.0, length_confirmed=True, width_confirmed=True, height_confirmed=True,
+        id="veh_van",
+        nickname="Transporter",
+        length_cm=590.0,
+        body_width_cm=190.4,
+        width_with_mirrors_cm=246.0,
+        height_cm=199.0,
+        height_with_accessories_cm=232.0,
+        weight_kg=2000.0,
+        length_confirmed=True,
+        width_confirmed=True,
+        height_confirmed=True,
     )
 
 
@@ -116,19 +133,40 @@ def seeded_facilities(session):
 
     rows = [
         ParkingFacility(
-            source_name="RDW-NPR", external_id="2460:363_BANK", name="Garage The Bank (Amsterdam)",
-            kind="garage", lat=52.36620, lon=4.89860, city="Amsterdam",
-            capacity=110, max_vehicle_height_cm=210.0, active=True,
+            source_name="RDW-NPR",
+            external_id="2460:363_BANK",
+            name="Garage The Bank (Amsterdam)",
+            kind="garage",
+            lat=52.36620,
+            lon=4.89860,
+            city="Amsterdam",
+            capacity=110,
+            max_vehicle_height_cm=210.0,
+            active=True,
         ),
         ParkingFacility(
-            source_name="RDW-NPR", external_id="2448:363_BIJ", name="Garage De Bijenkorf (Amsterdam)",
-            kind="garage", lat=52.37383, lon=4.89518, city="Amsterdam",
-            capacity=None, max_vehicle_height_cm=None, active=True,   # height not published
+            source_name="RDW-NPR",
+            external_id="2448:363_BIJ",
+            name="Garage De Bijenkorf (Amsterdam)",
+            kind="garage",
+            lat=52.37383,
+            lon=4.89518,
+            city="Amsterdam",
+            capacity=None,
+            max_vehicle_height_cm=None,
+            active=True,  # height not published
         ),
         ParkingFacility(
-            source_name="RDW-NPR", external_id="2448:363_LOW", name="Garage Laag (Amsterdam)",
-            kind="garage", lat=52.36700, lon=4.90000, city="Amsterdam",
-            capacity=60, max_vehicle_height_cm=180.0, active=True,    # too low for a van
+            source_name="RDW-NPR",
+            external_id="2448:363_LOW",
+            name="Garage Laag (Amsterdam)",
+            kind="garage",
+            lat=52.36700,
+            lon=4.90000,
+            city="Amsterdam",
+            capacity=60,
+            max_vehicle_height_cm=180.0,
+            active=True,  # too low for a van
         ),
     ]
     session.add_all(rows)
@@ -145,13 +183,22 @@ def seeded_bays(session):
 
     from parkfit.storage.models import ParkingBay
 
-    def bay(external_id, street, orientation, length_cm, width_cm, fiscal=True, lat=52.3690,
-            lon=4.9010):
+    def bay(
+        external_id, street, orientation, length_cm, width_cm, fiscal=True, lat=52.3690, lon=4.9010
+    ):
         return ParkingBay(
-            source_name="Amsterdam-Parkeervakken", external_id=external_id, street=street,
-            orientation=orientation, length_cm=length_cm, width_cm=width_cm,
-            max_length_cm=length_cm, max_width_cm=width_cm, fill_ratio=0.98,
-            fiscal=fiscal, lat=lat, lon=lon,
+            source_name="Amsterdam-Parkeervakken",
+            external_id=external_id,
+            street=street,
+            orientation=orientation,
+            length_cm=length_cm,
+            width_cm=width_cm,
+            max_length_cm=length_cm,
+            max_width_cm=width_cm,
+            fill_ratio=0.98,
+            fiscal=fiscal,
+            lat=lat,
+            lon=lon,
             geometry_rd_json=json.dumps([[0, 0], [1, 0], [1, 1], [0, 1]]),
         )
 
@@ -175,16 +222,27 @@ def recent_observation():
     """Build an availability observation at a chosen age."""
     from parkfit.storage.models import AvailabilityObservation, EvidenceSource, OccupancyState
 
-    def make(target_kind: str, target_id: int, *, age_s: float = 10.0,
-             evidence: EvidenceSource = EvidenceSource.OPERATOR_FEED,
-             state: OccupancyState = OccupancyState.VACANT, vacant: int | None = 12):
+    def make(
+        target_kind: str,
+        target_id: int,
+        *,
+        age_s: float = 10.0,
+        evidence: EvidenceSource = EvidenceSource.OPERATOR_FEED,
+        state: OccupancyState = OccupancyState.VACANT,
+        vacant: int | None = 12,
+    ):
         observed = datetime.now(UTC) - timedelta(seconds=age_s)
         return AvailabilityObservation(
-            target_kind=target_kind, target_id=target_id,
+            target_kind=target_kind,
+            target_id=target_id,
             observed_at=observed.replace(tzinfo=None),
-            evidence_source=int(evidence), state=state.value,
-            vacant_spaces=vacant, occupied_spaces=None, total_spaces=None,
-            confidence=0.95, source_name="test",
+            evidence_source=int(evidence),
+            state=state.value,
+            vacant_spaces=vacant,
+            occupied_spaces=None,
+            total_spaces=None,
+            confidence=0.95,
+            source_name="test",
         )
 
     return make
