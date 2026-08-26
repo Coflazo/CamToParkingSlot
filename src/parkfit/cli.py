@@ -1,0 +1,500 @@
+"""The ``pf`` command line.
+
+One entry point for ingest, search, camera management and evaluation, so the whole
+system can be driven without the API.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import sys
+from datetime import UTC, datetime
+from typing import Annotated
+
+import typer
+from rich.console import Console
+from rich.table import Table
+
+from parkfit import __version__
+from parkfit.config import get_settings
+
+app = typer.Typer(
+    name="pf",
+    help="ParkFit NL: vehicle-aware parking search for the Netherlands.",
+    no_args_is_help=True,
+    add_completion=False,
+)
+ingest_app = typer.Typer(help="Pull open data into the local database.", no_args_is_help=True)
+cameras_app = typer.Typer(help="Manage the camera registry.", no_args_is_help=True)
+app.add_typer(ingest_app, name="ingest")
+app.add_typer(cameras_app, name="cameras")
+
+console = Console()
+
+
+def _setup_logging(verbose: bool) -> None:
+    logging.basicConfig(
+        level=logging.DEBUG if verbose else logging.INFO,
+        format="%(levelname)s %(name)s: %(message)s",
+    )
+    for noisy in ("httpx", "httpcore", "asyncio"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
+
+# ---------------------------------------------------------------------------
+# ingest
+# ---------------------------------------------------------------------------
+@ingest_app.command("all")
+def ingest_all(
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+    skip_bays: bool = typer.Option(False, help="Skip the Amsterdam bay ingest, which is large."),
+) -> None:
+    """Run every ingest adapter in dependency order."""
+    _setup_logging(verbose)
+    from parkfit.storage.session import checkpoint, create_all
+
+    create_all()
+    results = []
+    results.append(_run_rdw())
+    results.append(_run_ndw())
+    results.append(_run_osm())
+    if not skip_bays:
+        results.append(_run_amsterdam())
+
+    stats = checkpoint(analyze=True)
+    console.print(f"\n[dim]maintenance: {stats}[/dim]")
+    _print_ingest_table(results)
+
+
+@ingest_app.command("rdw")
+def ingest_rdw(
+    geocoded_only: bool = typer.Option(True, help="Only areas that publish coordinates."),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """National parking register: garages, park-and-ride, capacities, height limits."""
+    _setup_logging(verbose)
+    from parkfit.storage.session import create_all
+
+    create_all()
+    _print_ingest_table([_run_rdw(geocoded_only=geocoded_only)])
+
+
+@ingest_app.command("ndw")
+def ingest_ndw(verbose: bool = typer.Option(False, "--verbose", "-v")) -> None:
+    """Live DATEX II parking occupancy."""
+    _setup_logging(verbose)
+    from parkfit.storage.session import create_all
+
+    create_all()
+    _print_ingest_table([_run_ndw()])
+
+
+@ingest_app.command("amsterdam")
+def ingest_amsterdam(
+    limit: int = typer.Option(0, help="Stop after this many bays. 0 means the whole city."),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """Amsterdam parking bays: exact polygons, layout, sign codes, time regimes."""
+    _setup_logging(verbose)
+    from parkfit.storage.session import create_all
+
+    create_all()
+    _print_ingest_table([_run_amsterdam(limit=limit or None)])
+
+
+@ingest_app.command("osm")
+def ingest_osm(verbose: bool = typer.Option(False, "--verbose", "-v")) -> None:
+    """OpenStreetMap car parks and points of interest."""
+    _setup_logging(verbose)
+    from parkfit.storage.session import create_all
+
+    create_all()
+    _print_ingest_table([_run_osm()])
+
+
+@ingest_app.command("roads")
+def ingest_roads(
+    south: float = 52.33, west: float = 4.82, north: float = 52.41, east: float = 4.97,
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """Build and cache the routable road graph for a bounding box."""
+    _setup_logging(verbose)
+    from parkfit.ingest.osm import OsmAdapter, ingest_roads as build
+
+    with OsmAdapter() as adapter:
+        result = build(adapter, south=south, west=west, north=north, east=east)
+    _print_ingest_table([result])
+
+
+def _run_rdw(geocoded_only: bool = True):
+    from parkfit.ingest.rdw import RdwAdapter
+
+    with RdwAdapter() as adapter:
+        return adapter.run(geocoded_only=geocoded_only)
+
+
+def _run_ndw():
+    from parkfit.ingest.ndw import NdwAdapter
+
+    with NdwAdapter() as adapter:
+        return adapter.run()
+
+
+def _run_osm():
+    from parkfit.ingest.osm import OsmAdapter, ingest_pois
+
+    with OsmAdapter() as adapter:
+        ingest_pois(adapter)
+        return adapter.run()
+
+
+def _run_amsterdam(limit: int | None = None):
+    from parkfit.ingest.amsterdam import AmsterdamAdapter
+
+    with AmsterdamAdapter(use_cache=False) as adapter:
+        return adapter.run(limit=limit) if limit else adapter.run_all()
+
+
+def _print_ingest_table(results) -> None:
+    table = Table(title="Ingest", header_style="bold")
+    for column in ("source", "fetched", "created", "updated", "skipped", "errors", "seconds"):
+        table.add_column(column, justify="right" if column != "source" else "left")
+    for r in results:
+        table.add_row(
+            r.source, str(r.fetched), str(r.created), str(r.updated), str(r.skipped),
+            str(len(r.errors)), f"{r.duration_s:.1f}",
+        )
+    console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# search
+# ---------------------------------------------------------------------------
+@app.command()
+def search(
+    destination: Annotated[str, typer.Argument(help="Where you want to go.")],
+    length: float = typer.Option(405.0, help="Vehicle length in cm."),
+    width: float = typer.Option(175.0, help="Bodywork width in cm."),
+    mirrors: float = typer.Option(0.0, help="Width across mirrors in cm. 0 infers it."),
+    height: float = typer.Option(145.0, help="Height including anything on the roof, in cm."),
+    weight: float = typer.Option(1100.0, help="Kerb weight in kg."),
+    origin: str = typer.Option("52.3789,4.9002", help="Where you are starting from."),
+    duration: int = typer.Option(120, help="How long you intend to stay, in minutes."),
+    walk: float = typer.Option(12.0, help="Maximum walking time in minutes."),
+    on_street: bool = typer.Option(True, help="Include individual on-street bays."),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON instead of a table."),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """Search for parking that fits a specific vehicle."""
+    _setup_logging(verbose)
+    from parkfit.domain.vehicle import VehicleProfile
+    from parkfit.services.search import SearchEngine, SearchPreferences, SearchRequest
+    from parkfit.storage.session import session_scope
+
+    try:
+        lat_s, lon_s = origin.split(",")
+        origin_lat, origin_lon = float(lat_s), float(lon_s)
+    except ValueError:
+        console.print("[red]--origin must look like 52.3789,4.9002[/red]")
+        raise typer.Exit(2) from None
+
+    vehicle = VehicleProfile(
+        id="cli", nickname="cli vehicle", length_cm=length, body_width_cm=width,
+        width_with_mirrors_cm=mirrors or (width + 36.0), height_cm=height,
+        height_with_accessories_cm=height, weight_kg=weight,
+        length_confirmed=True, width_confirmed=bool(mirrors), height_confirmed=True,
+    )
+
+    with session_scope() as session:
+        engine = SearchEngine(session)
+        try:
+            response = engine.search(
+                SearchRequest(
+                    destination=destination, vehicle=vehicle,
+                    origin_lat=origin_lat, origin_lon=origin_lon,
+                    arrival_time=datetime.now(UTC), duration_minutes=duration,
+                    preferences=SearchPreferences(
+                        max_walk_minutes=walk, include_on_street=on_street
+                    ),
+                )
+            )
+        finally:
+            engine.close()
+
+        if as_json:
+            console.print_json(json.dumps(_search_to_dict(response)))
+            return
+        _print_search(response)
+
+
+def _search_to_dict(response) -> dict:
+    return {
+        "search_id": response.search_id,
+        "destination": (
+            {"label": response.destination.label, "lat": response.destination.lat,
+             "lon": response.destination.lon, "source": response.destination.source}
+            if response.destination else None
+        ),
+        "elapsed_ms": round(response.elapsed_ms, 1),
+        "considered": response.considered,
+        "warnings": response.warnings,
+        "results": [
+            {
+                "rank": i, "name": c.name, "kind": c.kind,
+                "drive_min": round(c.drive.duration_min, 1) if c.drive else None,
+                "walk_min": round(c.walk.duration_min, 1) if c.walk else None,
+                "price_eur": c.price_eur, "price_note": c.price_note,
+                "probability": round(c.probability_at_eta, 3),
+                "cost": round(c.generalised_cost, 2),
+                "fit": c.fit_verdict, "confidence": c.confidence_label,
+                "lat": c.lat, "lon": c.lon,
+            }
+            for i, c in enumerate(response.results)
+        ],
+    }
+
+
+def _print_search(response) -> None:
+    if response.destination is None:
+        console.print("[red]Could not locate that destination.[/red]")
+        for warning in response.warnings:
+            console.print(f"  [yellow]{warning}[/yellow]")
+        return
+
+    d = response.destination
+    console.print(
+        f"\n[bold]{d.label}[/bold]  [dim]{d.lat:.5f}, {d.lon:.5f} via {d.source} "
+        f"(confidence {d.confidence:.2f})[/dim]"
+    )
+    console.print(
+        f"[dim]{response.considered} candidates in {response.radius_m:.0f} m | "
+        f"ruled out: {response.rejected_illegal} illegal, {response.rejected_fit} too large, "
+        f"{response.rejected_walk} too far to walk | routing: {response.routing_provider} | "
+        f"{response.elapsed_ms:.0f} ms[/dim]"
+    )
+    for warning in response.warnings:
+        console.print(f"  [yellow]! {warning}[/yellow]")
+
+    table = Table(header_style="bold", show_lines=False)
+    table.add_column("#", justify="right")
+    table.add_column("option", max_width=30)
+    table.add_column("drive", justify="right")
+    table.add_column("walk", justify="right")
+    table.add_column("price", justify="right")
+    table.add_column("P(free)", justify="right")
+    table.add_column("fit")
+    table.add_column("evidence")
+
+    for i, c in enumerate(response.results):
+        fit_colour = {"FITS": "green", "TIGHT_FIT": "yellow", "UNVERIFIED": "dim"}.get(
+            c.fit_verdict, "red"
+        )
+        table.add_row(
+            str(i),
+            c.name,
+            f"{c.drive.duration_min:.0f}m" if c.drive else "-",
+            f"{c.walk.duration_min:.0f}m" if c.walk else "-",
+            f"EUR {c.price_eur:.2f}" if c.price_eur else "free*",
+            f"{c.probability_at_eta:.2f}",
+            f"[{fit_colour}]{c.fit_verdict}[/{fit_colour}]",
+            c.confidence_label.replace("_", " ").lower(),
+        )
+    console.print(table)
+    if any(c.price_eur == 0 for c in response.results):
+        console.print("[dim]* not metered; check the signs on arrival[/dim]")
+
+
+# ---------------------------------------------------------------------------
+# cameras
+# ---------------------------------------------------------------------------
+@cameras_app.command("add")
+def camera_add(
+    camera_id: Annotated[str, typer.Option("--id", help="Identifier for this camera.")],
+    url: Annotated[str, typer.Option("--url", help="Stream URL.")],
+    stream_type: str = typer.Option("hls", "--type", help="hls, mjpeg, rtsp, snapshot or file."),
+    owner: str = typer.Option("", help="Who owns the camera."),
+    lat: float = typer.Option(0.0), lon: float = typer.Option(0.0),
+    attest: str = typer.Option(
+        "", help="Reference to the permission you hold. Sets owner_attested."
+    ),
+) -> None:
+    """Register a camera feed.
+
+    A camera is registered disabled and unverified. Pass ``--attest`` with a reference to
+    the permission you hold to mark it owner-attested, which is the status a production
+    deployment accepts. That is an assertion by you, not something the software can check.
+    """
+    from parkfit.cameras.registry import CameraRegistry
+    from parkfit.storage.session import create_all, session_scope
+
+    create_all()
+    with session_scope() as session:
+        registry = CameraRegistry(session)
+        registry.register(
+            camera_id, stream_url=url, stream_type=stream_type, owner=owner or None,
+            lat=lat or None, lon=lon or None,
+        )
+        if attest:
+            registry.attest_ownership(camera_id, agreement_reference=attest)
+            console.print(f"[green]{camera_id} registered and attested[/green] ({attest})")
+        else:
+            console.print(
+                f"[yellow]{camera_id} registered as unverified[/yellow]\n"
+                "It will not run until its permission status is resolved. Use --attest "
+                "with a reference to the permission you hold."
+            )
+
+
+@cameras_app.command("list")
+def camera_list() -> None:
+    """List registered cameras and whether each may run here."""
+    from parkfit.cameras.registry import CameraRegistry
+    from parkfit.storage.session import create_all, session_scope
+
+    create_all()
+    with session_scope() as session:
+        rows = CameraRegistry(session).processable()
+
+    if not rows:
+        console.print("[dim]No cameras registered. Add one with: pf cameras add[/dim]")
+        return
+
+    table = Table(title=f"Camera registry ({get_settings().environment.value})",
+                  header_style="bold")
+    for column in ("camera", "status", "may run", "enabled", "type", "health"):
+        table.add_column(column)
+    for camera, decision in rows:
+        table.add_row(
+            camera.camera_id,
+            camera.permission_status,
+            "[green]yes[/green]" if decision.allowed else "[red]no[/red]",
+            "yes" if camera.enabled else "no",
+            camera.stream_type or "-",
+            camera.technical_status,
+        )
+    console.print(table)
+    for camera, decision in rows:
+        if not decision.allowed:
+            console.print(f"[dim]{camera.camera_id}: {decision.reason}[/dim]")
+
+
+@cameras_app.command("enable")
+def camera_enable(camera_id: str, off: bool = typer.Option(False, "--off")) -> None:
+    """Enable or disable a camera. Enabling refuses if its permission does not allow it."""
+    from parkfit.cameras.registry import CameraRegistry
+    from parkfit.storage.session import session_scope
+
+    with session_scope() as session:
+        try:
+            CameraRegistry(session).set_enabled(camera_id, not off)
+        except PermissionError as exc:
+            console.print(f"[red]refused:[/red] {exc}")
+            raise typer.Exit(2) from None
+        except KeyError:
+            console.print(f"[red]unknown camera: {camera_id}[/red]")
+            raise typer.Exit(2) from None
+    console.print(f"[green]{camera_id} {'disabled' if off else 'enabled'}[/green]")
+
+
+@cameras_app.command("audit")
+def camera_audit(
+    max_per_site: int = typer.Option(10, help="Candidates per listing page."),
+    browser: bool = typer.Option(True, help="Render client-side pages with a headless browser."),
+    report: str = typer.Option("docs/camera_registry/audit_report.md"),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """Crawl candidate webcam sources and record what may be processed.
+
+    Honours robots.txt and performs no anti-bot evasion. It can rule a source out; it
+    cannot rule one in, because that needs a person and a written permission.
+    """
+    _setup_logging(verbose)
+    import pathlib
+
+    from parkfit.cameras.auditor import SourceAuditor, render_audit_report
+
+    with SourceAuditor(use_browser=browser) as auditor:
+        candidates = auditor.audit(max_per_site=max_per_site)
+
+    path = pathlib.Path(report)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render_audit_report(candidates), encoding="utf-8")
+
+    table = Table(title="Audit", header_style="bold")
+    for column in ("site", "status", "type", "url"):
+        table.add_column(column, overflow="fold")
+    for candidate in candidates[:30]:
+        table.add_row(
+            candidate.source_site, candidate.permission_status,
+            candidate.stream_type or "-", (candidate.stream_url or candidate.page_url)[:70],
+        )
+    console.print(table)
+    console.print(f"\n[dim]report written to {path}[/dim]")
+
+
+# ---------------------------------------------------------------------------
+# meta
+# ---------------------------------------------------------------------------
+@app.command()
+def status() -> None:
+    """Show what is loaded and how much data is present."""
+    from sqlalchemy import func, select
+
+    from parkfit.native import HAS_NATIVE, native_version
+    from parkfit.routing.provider import get_routing_service
+    from parkfit.storage.models import (
+        AvailabilityObservation, CameraSource, ParkingBay, ParkingFacility, PointOfInterest,
+    )
+    from parkfit.storage.session import create_all, session_scope
+
+    create_all()
+    settings = get_settings()
+    with session_scope() as session:
+        counts = {
+            "parking facilities": session.execute(
+                select(func.count()).select_from(ParkingFacility)).scalar(),
+            "parking bays": session.execute(
+                select(func.count()).select_from(ParkingBay)).scalar(),
+            "points of interest": session.execute(
+                select(func.count()).select_from(PointOfInterest)).scalar(),
+            "availability observations": session.execute(
+                select(func.count()).select_from(AvailabilityObservation)).scalar(),
+            "registered cameras": session.execute(
+                select(func.count()).select_from(CameraSource)).scalar(),
+        }
+
+    table = Table(title=f"ParkFit NL {__version__}", header_style="bold")
+    table.add_column("component")
+    table.add_column("value", justify="right")
+    table.add_row("environment", settings.environment.value)
+    table.add_row("database", "postgres" if settings.is_postgres else "sqlite")
+    table.add_row(
+        "native module",
+        f"[green]{native_version()}[/green]" if HAS_NATIVE else "[yellow]not built[/yellow]",
+    )
+    table.add_row("routing provider", get_routing_service().active_provider)
+    for name, value in counts.items():
+        table.add_row(name, f"{value:,}")
+    console.print(table)
+    if not HAS_NATIVE:
+        console.print("[yellow]Build the native module for the compiled path: "
+                      ".\\tasks.ps1 build[/yellow]")
+
+
+@app.command()
+def version() -> None:
+    """Print the version."""
+    console.print(__version__)
+
+
+def main() -> int:
+    try:
+        app()
+    except KeyboardInterrupt:
+        return 130
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
