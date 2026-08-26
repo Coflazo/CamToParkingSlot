@@ -198,6 +198,14 @@ def _explain_fit(candidate: Candidate) -> str:
     if candidate.fit_verdict == "DOES_NOT_FIT":
         constraint = candidate.fit_binding or "a limit"
         return f"too large: {constraint} is short by {abs(candidate.fit_slack_cm):.0f} cm"
+    # The commonest case by far is that no vehicle was selected, and telling someone
+    # that "vehicle_dimensions" are unknown is accurate and useless. Say what to do.
+    if "vehicle_dimensions" in candidate.fit_unverified:
+        return "select a vehicle to check whether it fits here"
+    if "facility_max_height" in candidate.fit_unverified:
+        return "this car park does not publish a height limit, so fit is unconfirmed"
+    if "bay_orientation" in candidate.fit_unverified:
+        return "bay layout unknown, so the stricter of the two readings was applied"
     missing = ", ".join(candidate.fit_unverified) or "required dimensions"
     return f"fit not fully verified ({missing} unknown)"
 

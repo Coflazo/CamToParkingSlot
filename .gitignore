@@ -53,3 +53,7 @@ desktop.ini
 
 # Test scratch database
 data/test-run/
+
+# Web build output
+web/dist/
+web/node_modules/

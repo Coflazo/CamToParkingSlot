@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#12161c" />
+    <meta
+      name="description"
+      content="Find parking in the Netherlands that actually fits your vehicle, with the evidence behind every claim."
+    />
+    <title>ParkFit NL</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>&#128663;</text></svg>" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <h1>ParkFit NL</h1>
+            <p class="tagline">Parking that fits your vehicle</p>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <span id="health-pill" class="pill pill-muted" title="Backend status">checking…</span>
+          <button id="vehicle-button" class="button button-ghost" type="button">Vehicles</button>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel" aria-label="Search and results">
+          <form id="search-form" class="search" autocomplete="off">
+            <label class="field">
+              <span class="field-label">Where are you going?</span>
+              <input
+                id="destination"
+                name="destination"
+                type="text"
+                placeholder="Rembrandt House Museum"
+                required
+                minlength="2"
+                aria-describedby="destination-hint"
+              />
+              <span id="destination-hint" class="field-hint">
+                A place name works — museums, stations, venues — as well as an address.
+              </span>
+              <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
+            </label>
+
+            <div class="field-row">
+              <label class="field field-small">
+                <span class="field-label">Staying for</span>
+                <select id="duration" name="duration">
+                  <option value="60">1 hour</option>
+                  <option value="120" selected>2 hours</option>
+                  <option value="180">3 hours</option>
+                  <option value="360">6 hours</option>
+                  <option value="720">All day</option>
+                </select>
+              </label>
+              <label class="field field-small">
+                <span class="field-label">Max walk</span>
+                <select id="walk" name="walk">
+                  <option value="5">5 min</option>
+                  <option value="10">10 min</option>
+                  <option value="12" selected>12 min</option>
+                  <option value="20">20 min</option>
+                  <option value="30">30 min</option>
+                </select>
+              </label>
+              <label class="field field-small">
+                <span class="field-label">Vehicle</span>
+                <select id="vehicle" name="vehicle">
+                  <option value="">Not specified</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="toggles">
+              <label class="toggle">
+                <input type="checkbox" id="on-street" checked />
+                <span>Include on-street bays</span>
+              </label>
+              <label class="toggle">
+                <input type="checkbox" id="ev" />
+                <span>Needs EV charging</span>
+              </label>
+              <label class="toggle">
+                <input type="checkbox" id="disabled-bay" />
+                <span>Disabled badge</span>
+              </label>
+            </div>
+
+            <button id="search-button" class="button button-primary" type="submit">
+              Find parking
+            </button>
+          </form>
+
+          <div id="status" class="status" role="status" aria-live="polite"></div>
+          <div id="results" class="results"></div>
+        </section>
+
+        <section class="map-panel" aria-label="Map">
+          <div id="map"></div>
+          <div id="map-legend" class="legend" hidden>
+            <span class="legend-item"><i class="dot dot-destination"></i>Destination</span>
+            <span class="legend-item"><i class="dot dot-best"></i>Best option</span>
+            <span class="legend-item"><i class="dot dot-other"></i>Alternatives</span>
+          </div>
+        </section>
+      </main>
+
+      <dialog id="vehicle-dialog" class="dialog">
+        <form method="dialog" class="dialog-body">
+          <h2>Your vehicles</h2>
+          <p class="dialog-lead">
+            Dimensions decide which spaces are offered. RDW publishes length and width for
+            a Dutch plate but <strong>not height</strong> — and height is what a garage
+            barrier stops — so that one is always yours to confirm.
+          </p>
+          <div id="vehicle-list" class="vehicle-list"></div>
+          <div id="vehicle-auth" class="vehicle-auth"></div>
+          <menu class="dialog-actions">
+            <button value="close" class="button button-ghost">Close</button>
+          </menu>
+        </form>
+      </dialog>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
