@@ -46,7 +46,19 @@ if(PARKFIT_BUILD_VISION)
   if(TARGET parkfit_vision AND PARKFIT_VISION_SOURCES)
     target_include_directories(parkfit_vision PUBLIC
       ${CMAKE_CURRENT_SOURCE_DIR}/cpp/vision/include)
+    # The ONNX Runtime C API headers are PRIVATE on purpose. Only onnx_detector.cpp
+    # includes them, and that header is four hundred kilobytes: making it PUBLIC would
+    # push it through every target that merely wants to know what a Detector is.
+    #
+    # Headers only. There is no import library and nothing to link against, because the
+    # runtime is opened with LoadLibrary at startup, so the worker builds and runs on a
+    # machine where ONNX Runtime is not installed.
+    target_include_directories(parkfit_vision PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/cpp/third_party/onnxruntime)
     target_link_libraries(parkfit_vision PUBLIC parkfit_core)
+    if(UNIX AND NOT APPLE)
+      target_link_libraries(parkfit_vision PUBLIC ${CMAKE_DL_LIBS})
+    endif()
   else()
     target_include_directories(parkfit_vision INTERFACE
       ${CMAKE_CURRENT_SOURCE_DIR}/cpp/vision/include)

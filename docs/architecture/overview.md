@@ -49,7 +49,7 @@ must not depend on whether the project happened to be compiled.
 
 ---
 
-## Search, in eleven ordered steps
+## Search: in eleven ordered steps
 
 1. Geocode the destination (OSM points of interest, then PDOK)
 2. Retrieve candidates within an expanding radius, via the in-memory spatial grid
@@ -169,7 +169,7 @@ here"; everything that turns that into "5.8 m of free kerb" is projection and in
 arithmetic, which can be tested against exact ground truth. Asking a network to regress
 gap length directly would be harder to train and impossible to audit when wrong.
 
-### The temporal filter, and why it is asymmetric
+### The temporal filter: and why it is asymmetric
 
 Telling a driver a space is occupied when it is free costs them one option out of ten.
 Telling them a space is free when it is occupied costs them the trip. The two errors are
