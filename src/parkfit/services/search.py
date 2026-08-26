@@ -3,7 +3,7 @@
 The whole product converges here. A search runs eleven steps:
 
 1. Geocode the destination (OSM points of interest, then PDOK).
-2. Retrieve candidates within an expanding radius -- facilities and marked bays.
+2. Retrieve candidates within an expanding radius, facilities and marked bays.
 3. Drop candidates that are illegal for this driver at this time.
 4. Drop candidates this vehicle physically cannot use.
 5. Route the drive leg, one sweep for all candidates.
@@ -42,6 +42,8 @@ from parkfit.domain.pricing import estimate_prices
 from parkfit.domain.restrictions import RestrictionVerdict, evaluate_restrictions
 from parkfit.domain.vehicle import VehicleProfile
 from parkfit.native import native
+from parkfit.prediction.features import load_statics as load_target_statics
+from parkfit.prediction.model import get_model as get_occupancy_model
 from parkfit.routing.provider import (
     Profile,
     RouteResult,
@@ -54,6 +56,7 @@ from parkfit.services.ledger import LedgerEntry, get_ledger
 from parkfit.storage.models import (
     EvidenceSource,
     FacilityKind,
+    OccupancyState,
     ParkingBay,
     ParkingFacility,
     SegmentDynamics,
@@ -182,7 +185,7 @@ class SearchEngine:
         if self._owns_geocoder and self._geocoder is not None:
             self._geocoder.close()
 
-    # -- main entry point ---------------------------------------------------
+    # main entry point ---------------------------------------------------
     def search(self, request: SearchRequest) -> SearchResponse:
         started = datetime.now(UTC)
         search_id = uuid.uuid4().hex[:16]
@@ -245,7 +248,7 @@ class SearchEngine:
         response.elapsed_ms = (datetime.now(UTC) - started).total_seconds() * 1000.0
         return response
 
-    # -- 2. candidate retrieval --------------------------------------------
+    # 2. candidate retrieval --------------------------------------------
     def _collect_candidates(
         self, destination: Destination, request: SearchRequest
     ) -> tuple[list[Candidate], float]:
@@ -270,7 +273,7 @@ class SearchEngine:
 
         Radius search is answered by the in-memory grid rather than by SQL. A bbox
         predicate can only range-scan on the leading index column, so the database ends
-        up filtering tens of thousands of bays by longitude -- 200 ms with a warm page
+        up filtering tens of thousands of bays by longitude, 200 ms with a warm page
         cache, four seconds with a cold one, and every fresh connection is cold.
         """
         index = get_candidate_index()
@@ -351,7 +354,7 @@ class SearchEngine:
                 )
         return out
 
-    # -- 3. legality --------------------------------------------------------
+    # 3. legality --------------------------------------------------------
     def _filter_legal(
         self,
         candidates: list[Candidate],
@@ -379,7 +382,7 @@ class SearchEngine:
             kept.append(candidate)
         return kept
 
-    # -- 4. physical fit ----------------------------------------------------
+    # 4. physical fit ----------------------------------------------------
     def _filter_fit(
         self, candidates: list[Candidate], request: SearchRequest, response: SearchResponse
     ) -> list[Candidate]:
@@ -421,7 +424,7 @@ class SearchEngine:
             kept.append(candidate)
         return kept
 
-    # -- 5 and 6. routing ---------------------------------------------------
+    # 5 and 6. routing ---------------------------------------------------
     def _route_legs(
         self,
         candidates: list[Candidate],
@@ -473,7 +476,7 @@ class SearchEngine:
             return candidates[:5]
         return kept
 
-    # -- 7 to 8. availability and price ------------------------------------
+    # 7 to 8. availability and price ------------------------------------
     def _attach_availability(self, candidates: list[Candidate], arrival: datetime) -> None:
         resolved = resolve_availability(
             self.session,
@@ -488,6 +491,54 @@ class SearchEngine:
                 # travel with the resolved state rather than be guessed at scoring time.
                 availability = replace(availability, metered=candidate.metered)
             candidate.availability = availability
+
+        self._attach_model_prior(candidates, arrival)
+
+    def _attach_model_prior(self, candidates: list[Candidate], arrival: datetime) -> None:
+        """Replace the flat base rate with a learned one, where nothing live is known.
+
+        Only candidates with no usable observation are touched. A target a sensor saw
+        thirty seconds ago does not need a prediction, and letting a model overwrite a
+        measurement is exactly the failure the evidence ordering exists to prevent.
+        """
+        model = get_occupancy_model()
+        if not model.available:
+            return
+
+        needs_prior = [
+            c
+            for c in candidates
+            if c.availability is not None
+            and (c.availability.stale or c.availability.state is OccupancyState.UNKNOWN)
+        ]
+        if not needs_prior:
+            return
+
+        statics = load_target_statics(self.session, [c.key for c in needs_prior])
+        pairs: list[tuple[object, datetime]] = []
+        matched: list[Candidate] = []
+        for candidate in needs_prior:
+            static = statics.get(candidate.key)
+            if static is not None:
+                pairs.append((static, arrival))
+                matched.append(candidate)
+
+        occupied = model.probability_occupied(pairs)
+        if occupied is None:
+            return
+
+        for candidate, p_occupied in zip(matched, occupied, strict=True):
+            availability = candidate.availability
+            if availability is None:
+                continue
+            candidate.availability = replace(
+                availability,
+                model_prior=float(1.0 - p_occupied),
+                # A prediction outranks the static register and nothing else. Recording it
+                # here is what makes the response say "modelled" rather than implying the
+                # number came from somewhere it did not.
+                evidence=max(availability.evidence, EvidenceSource.PREDICTIVE_MODEL),
+            )
 
     def _attach_price(
         self, candidates: list[Candidate], request: SearchRequest, arrival: datetime
@@ -531,7 +582,7 @@ class SearchEngine:
                 # a default. These are replaced by learned rates as history accumulates.
                 candidate.lambda_per_min = 0.12 if candidate.is_exact_space else 0.01
 
-    # -- 9 and 10. scoring --------------------------------------------------
+    # 9 and 10. scoring --------------------------------------------------
     def _rank(
         self, candidates: list[Candidate], request: SearchRequest, search_id: str
     ) -> list[Candidate]:
@@ -609,12 +660,12 @@ class SearchEngine:
 
         Read from the in-memory ledger, not the database. The ledger sees a
         recommendation issued microseconds ago, which a query over committed rows does
-        not -- and noticing near-simultaneous requests is the entire purpose of the
+        not, and noticing near-simultaneous requests is the entire purpose of the
         signal.
         """
         return get_ledger().counts(keys)
 
-    # -- 11. record ---------------------------------------------------------
+    # 11. record ---------------------------------------------------------
     def _record_recommendations(
         self, results: list[Candidate], search_id: str, request: SearchRequest
     ) -> None:

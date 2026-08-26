@@ -1,7 +1,7 @@
 """Resolving what is actually known about a parking option, right now.
 
 This module is the honesty layer. Several sources can describe the same car park and
-they routinely disagree -- the operator feed says twelve free, a camera saw none, the
+they routinely disagree: the operator feed says twelve free, a camera saw none, the
 static register says it has ninety spaces. The product promise is not "we always find a
 space"; it is "we show you what we know, where it came from, and how old it is". That
 is only possible if disagreement is resolved explicitly rather than by whichever write
@@ -16,7 +16,7 @@ observation and resolve on read.
 
 **Freshness is a first-class property.** A live source whose last observation is older
 than the staleness window stops being a live source and is presented as stale, not as
-current. The alternative -- showing a five-minute-old count as though it were now -- is
+current. The alternative, showing a five-minute-old count as though it were now, is
 how a parking app teaches its users not to trust it.
 """
 
@@ -53,6 +53,14 @@ class ResolvedAvailability:
     #: prior by a factor of two.
     metered: bool = True
 
+    #: Probability of being free supplied by the learned occupancy model, when one is
+    #: trained and this target has nothing live to go on. ``None`` means the static base
+    #: rate applies. It replaces the prior, never an observation:
+    #: :func:`resolve_availability` still returns whatever was actually seen, and the
+    #: caller that sets this also raises the evidence label to ``PREDICTIVE_MODEL`` so a
+    #: prediction is never presented as a measurement.
+    model_prior: float | None = None
+
     #: Prior probability a target is free when nothing has been observed.
     #:
     #: These are not shrugs, they are base rates, and the difference between a kerb bay
@@ -86,7 +94,15 @@ class ResolvedAvailability:
 
     @property
     def prior(self) -> float:
-        """Base rate for this kind of target when there is nothing live to go on."""
+        """Base rate for this kind of target when there is nothing live to go on.
+
+        A learned per-target, per-time-of-day estimate replaces the flat base rate where
+        one is available. The base rates remain the fallback rather than being deleted:
+        the model covers only the targets it was trained on, and a system that returns
+        nothing for the rest would be worse than one that returns a defensible average.
+        """
+        if self.model_prior is not None:
+            return max(0.01, min(0.99, self.model_prior))
         if self.target_kind == "facility":
             return self.PRIOR_FACILITY
         return self.PRIOR_SINGLE_METERED_BAY if self.metered else self.PRIOR_SINGLE_FREE_BAY

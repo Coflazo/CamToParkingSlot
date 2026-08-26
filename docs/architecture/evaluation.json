@@ -8,9 +8,9 @@
   "gap_mae_m": 0.001032,
   "gap_p95_m": 0.00251,
   "gap_max_m": 0.003038,
-  "search_median_ms": 146.4542,
-  "search_p95_ms": 214.8063,
-  "search_max_ms": 214.8063
+  "search_median_ms": 141.1142,
+  "search_p95_ms": 169.5413,
+  "search_max_ms": 169.5413
  },
  "counts": {
   "trials": 3000,
