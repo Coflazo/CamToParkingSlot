@@ -125,9 +125,7 @@ def build_model(num_classes: int = len(scenes.CLASS_NAMES)):
             self.up1 = conv_bn(64, 32)
             self.fuse = conv_bn(32, 32)
 
-            self.heatmap_head = nn.Sequential(
-                conv_bn(32, 32), nn.Conv2d(32, num_classes, 1)
-            )
+            self.heatmap_head = nn.Sequential(conv_bn(32, 32), nn.Conv2d(32, num_classes, 1))
             self.size_head = nn.Sequential(conv_bn(32, 32), nn.Conv2d(32, 2, 1))
             self.offset_head = nn.Sequential(conv_bn(32, 32), nn.Conv2d(32, 2, 1))
 
@@ -479,7 +477,9 @@ def evaluate(model, split: scenes.DatasetSplit, report: TrainReport) -> None:
     report.val_precision = tp / (tp + fp) if (tp + fp) else 0.0
     report.val_recall = tp / (tp + fn) if (tp + fn) else 0.0
     denominator = report.val_precision + report.val_recall
-    report.val_f1 = 2 * report.val_precision * report.val_recall / denominator if denominator else 0.0
+    report.val_f1 = (
+        2 * report.val_precision * report.val_recall / denominator if denominator else 0.0
+    )
     report.val_box_mae_px = float(np.mean(errors)) if errors else 0.0
 
     for condition, (a, b, c) in sorted(by_condition.items()):
