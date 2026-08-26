@@ -50,3 +50,6 @@ data/
 .idea/
 Thumbs.db
 desktop.ini
+
+# Test scratch database
+data/test-run/
