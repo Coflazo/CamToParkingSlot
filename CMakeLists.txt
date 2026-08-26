@@ -37,6 +37,9 @@ target_compile_features(parkfit_core INTERFACE cxx_std_20)
 # parkfit_vision -- frame health, calibration, gap estimation, temporal state.
 # ---------------------------------------------------------------------------
 if(PARKFIT_BUILD_VISION)
+  include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/OnnxRuntimeHeaders.cmake)
+  parkfit_resolve_onnxruntime_headers(PARKFIT_ONNXRUNTIME_INCLUDE_DIR)
+
   file(GLOB PARKFIT_VISION_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/cpp/vision/src/*.cpp)
   if(PARKFIT_VISION_SOURCES)
     add_library(parkfit_vision STATIC ${PARKFIT_VISION_SOURCES})
@@ -54,7 +57,7 @@ if(PARKFIT_BUILD_VISION)
     # runtime is opened with LoadLibrary at startup, so the worker builds and runs on a
     # machine where ONNX Runtime is not installed.
     target_include_directories(parkfit_vision PRIVATE
-      ${CMAKE_CURRENT_SOURCE_DIR}/cpp/third_party/onnxruntime)
+      ${PARKFIT_ONNXRUNTIME_INCLUDE_DIR})
     target_link_libraries(parkfit_vision PUBLIC parkfit_core)
     if(UNIX AND NOT APPLE)
       target_link_libraries(parkfit_vision PUBLIC ${CMAKE_DL_LIBS})
