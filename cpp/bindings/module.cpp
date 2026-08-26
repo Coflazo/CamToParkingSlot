@@ -225,6 +225,8 @@ PYBIND11_MODULE(parkfit_native, m) {
         .def_readwrite("vertical_cm", &fit::Margins::vertical_cm)
         .def_readwrite("lateral_total_cm", &fit::Margins::lateral_total_cm)
         .def_readwrite("bay_lateral_total_cm", &fit::Margins::bay_lateral_total_cm)
+        .def_readwrite("parallel_lateral_total_cm", &fit::Margins::parallel_lateral_total_cm)
+        .def_readwrite("bay_parallel_end_cm", &fit::Margins::bay_parallel_end_cm)
         .def_readwrite("longitudinal_total_cm", &fit::Margins::longitudinal_total_cm)
         .def_readwrite("parallel_front_cm", &fit::Margins::parallel_front_cm)
         .def_readwrite("parallel_rear_cm", &fit::Margins::parallel_rear_cm)

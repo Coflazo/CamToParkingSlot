@@ -176,35 +176,83 @@ class BayMeasurement:
 
 
 def measure_bay(ring: Ring) -> BayMeasurement:
-    """Measure a bay polygon conservatively. Dimensions in metres, RD frame."""
+    """Measure a bay polygon by its own geometry, in metres, RD frame.
+
+    Bay polygons are overwhelmingly quadrilaterals, and frequently *skewed* ones:
+    Amsterdam canal-side parking is drawn as angled parallelograms. For those, an
+    enclosing rectangle is the wrong tool entirely. A real Prinsengracht bay has sides
+    of 5.66 m and 2.61 m at 48 degrees; its minimum-area enclosing rectangle is
+    7.40 x 1.89 m, which is a box rotated to hug a diagonal and matches neither
+    dimension of the actual bay. Measured that way, cars "did not fit" spaces they park
+    in every day.
+
+    So a quadrilateral is measured by its own edges: pair the opposite sides, take the
+    mean of the longer pair as the length, and derive the width as ``area / length``.
+    That width is the polygon perpendicular height, which is exactly the clearance a
+    car occupies -- 10.98 / 5.66 = 1.94 m for that Prinsengracht bay, ample for a
+    1.75 m car. The result is exact for rectangles and parallelograms, and conservative
+    for trapezoids: the Abidjanweg bay measures 6.47 x 1.99 m rather than the enclosing
+    box 7.46 x 1.72 m.
+
+    Anything that is not a quadrilateral falls back to the enclosing-rectangle estimate,
+    still corrected by area so it cannot overstate.
+    """
     rect = min_area_rect(ring)
     area = ring_area(ring)
+
+    pts = _dedupe_closing_point(ring)
+    length_m = width_m = 0.0
+    angle_rad = rect.angle_rad
+
+    if len(pts) == 4 and area > 1e-9:
+        edges = [
+            (
+                math.hypot(pts[(i + 1) % 4][0] - pts[i][0], pts[(i + 1) % 4][1] - pts[i][1]),
+                math.atan2(pts[(i + 1) % 4][1] - pts[i][1], pts[(i + 1) % 4][0] - pts[i][0]),
+            )
+            for i in range(4)
+        ]
+        pair_a = (edges[0][0] + edges[2][0]) / 2.0
+        pair_b = (edges[1][0] + edges[3][0]) / 2.0
+        if pair_a >= pair_b:
+            length_m, angle_rad = pair_a, edges[0][1]
+        else:
+            length_m, angle_rad = pair_b, edges[1][1]
+        if length_m > 1e-9:
+            width_m = area / length_m
+
+    if length_m <= 1e-9 or width_m <= 1e-9:
+        rect_area = rect.length_m * rect.width_m
+        if rect_area <= 1e-9 or area <= 1e-9:
+            return BayMeasurement(
+                length_m=rect.length_m, width_m=rect.width_m,
+                max_length_m=rect.length_m, max_width_m=rect.width_m,
+                angle_rad=rect.angle_rad, fill_ratio=0.0,
+                centre_x=rect.centre_x, centre_y=rect.centre_y,
+            )
+        length_m = min(area / rect.width_m if rect.width_m > 1e-9 else rect.length_m,
+                       rect.length_m)
+        width_m = min(area / rect.length_m if rect.length_m > 1e-9 else rect.width_m,
+                      rect.width_m)
+
+    if width_m > length_m:
+        length_m, width_m = width_m, length_m
+
     rect_area = rect.length_m * rect.width_m
-
-    if rect_area <= 1e-9 or area <= 1e-9:
-        return BayMeasurement(
-            length_m=rect.length_m,
-            width_m=rect.width_m,
-            max_length_m=rect.length_m,
-            max_width_m=rect.width_m,
-            angle_rad=rect.angle_rad,
-            fill_ratio=0.0,
-            centre_x=rect.centre_x,
-            centre_y=rect.centre_y,
-        )
-
-    effective_length = area / rect.width_m if rect.width_m > 1e-9 else rect.length_m
-    effective_width = area / rect.length_m if rect.length_m > 1e-9 else rect.width_m
-
     return BayMeasurement(
-        # Never report more than the enclosing rectangle: for a polygon bulging outside
-        # a convex bay the ratio could otherwise exceed the true extent.
-        length_m=min(effective_length, rect.length_m),
-        width_m=min(effective_width, rect.width_m),
+        length_m=length_m,
+        width_m=width_m,
         max_length_m=rect.length_m,
         max_width_m=rect.width_m,
-        angle_rad=rect.angle_rad,
-        fill_ratio=min(1.0, area / rect_area),
+        angle_rad=angle_rad,
+        fill_ratio=min(1.0, area / rect_area) if rect_area > 1e-9 else 0.0,
         centre_x=rect.centre_x,
         centre_y=rect.centre_y,
     )
+
+
+def _dedupe_closing_point(ring: Ring) -> Ring:
+    """Drop a repeated final vertex, which GeoJSON rings carry by convention."""
+    if len(ring) >= 2 and abs(ring[0][0] - ring[-1][0]) < 1e-9 and abs(ring[0][1] - ring[-1][1]) < 1e-9:
+        return ring[:-1]
+    return ring

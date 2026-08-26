@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from functools import lru_cache
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -170,6 +171,18 @@ class OsrmProvider(RoutingProvider):
             geometry=[[float(c[0]), float(c[1])] for c in geometry],
             confidence=0.95,
         )
+
+
+@lru_cache(maxsize=1)
+def get_routing_service() -> "RoutingService":
+    """One shared routing service per process.
+
+    The road graph is 188k nodes and takes about a second to load, plus strongly
+    connected components and two spatial indexes. Building a RoutingService per request
+    paid that cost every single time -- a two-search API call spent four seconds loading
+    the same graph twice. It is immutable once built, so sharing it is safe.
+    """
+    return RoutingService()
 
 
 class RoutingService:

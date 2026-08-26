@@ -208,9 +208,15 @@ inline MinAreaRect min_area_rect(const Ring& poly) {
 /// enclosing rectangle reports 7.46 -- two metres of kerb that do not exist, in the
 /// optimistic direction, for the number that decides whether a car fits.
 ///
-/// `area / extent` yields the mean of the parallel sides instead: exact for a true
-/// rectangle, conservative for a trapezoid. `fill_ratio` reports how far the two
-/// measures diverge, which the ranking uses to discount confidence.
+/// Worse, bay polygons are frequently *skewed*: Amsterdam canal-side parking is drawn
+/// as angled parallelograms. A real Prinsengracht bay has sides of 5.66 m and 2.61 m at
+/// 48 degrees, and its enclosing rectangle is 7.40 x 1.89 m -- a box rotated to hug a
+/// diagonal, matching neither dimension of the actual bay.
+///
+/// A quadrilateral is therefore measured by its own edges: pair the opposite sides,
+/// take the mean of the longer pair as the length, then derive width as `area / length`.
+/// That width is the polygon perpendicular height, which is exactly what a car occupies.
+/// Exact for rectangles and parallelograms, conservative for trapezoids.
 struct BayMeasurement {
     double length_m{};
     double width_m{};
@@ -221,7 +227,14 @@ struct BayMeasurement {
     Point2 centre{};
 };
 
-inline BayMeasurement measure_bay(const Ring& ring) {
+inline BayMeasurement measure_bay(const Ring& raw) {
+    // Drop a repeated closing vertex, which GeoJSON rings carry by convention.
+    Ring ring = raw;
+    if (ring.size() >= 2 && std::abs(ring.front().x - ring.back().x) < 1e-9 &&
+        std::abs(ring.front().y - ring.back().y) < 1e-9) {
+        ring.pop_back();
+    }
+
     const MinAreaRect rect = min_area_rect(ring);
     const double poly_area = area(ring);
     const double rect_area = rect.length_m * rect.width_m;
@@ -231,19 +244,47 @@ inline BayMeasurement measure_bay(const Ring& ring) {
     out.max_width_m = rect.width_m;
     out.angle_rad = rect.angle_rad;
     out.centre = rect.centre;
+    out.fill_ratio = rect_area > 1e-9 ? std::min(1.0, poly_area / rect_area) : 0.0;
 
-    if (rect_area <= 1e-9 || poly_area <= 1e-9) {
-        out.length_m = rect.length_m;
-        out.width_m = rect.width_m;
-        out.fill_ratio = 0.0;
-        return out;
+    double length_m = 0.0;
+    double width_m = 0.0;
+
+    if (ring.size() == 4 && poly_area > 1e-9) {
+        double lengths[4];
+        double angles[4];
+        for (int i = 0; i < 4; ++i) {
+            const Point2& a = ring[static_cast<std::size_t>(i)];
+            const Point2& b = ring[static_cast<std::size_t>((i + 1) % 4)];
+            lengths[i] = std::sqrt(dist2(a, b));
+            angles[i] = std::atan2(b.y - a.y, b.x - a.x);
+        }
+        const double pair_a = (lengths[0] + lengths[2]) * 0.5;
+        const double pair_b = (lengths[1] + lengths[3]) * 0.5;
+        if (pair_a >= pair_b) {
+            length_m = pair_a;
+            out.angle_rad = angles[0];
+        } else {
+            length_m = pair_b;
+            out.angle_rad = angles[1];
+        }
+        if (length_m > 1e-9) width_m = poly_area / length_m;
     }
 
-    const double eff_len = rect.width_m > 1e-9 ? poly_area / rect.width_m : rect.length_m;
-    const double eff_wid = rect.length_m > 1e-9 ? poly_area / rect.length_m : rect.width_m;
-    out.length_m = std::min(eff_len, rect.length_m);
-    out.width_m = std::min(eff_wid, rect.width_m);
-    out.fill_ratio = std::min(1.0, poly_area / rect_area);
+    if (length_m <= 1e-9 || width_m <= 1e-9) {
+        if (rect_area <= 1e-9 || poly_area <= 1e-9) {
+            out.length_m = rect.length_m;
+            out.width_m = rect.width_m;
+            return out;
+        }
+        length_m = std::min(rect.width_m > 1e-9 ? poly_area / rect.width_m : rect.length_m,
+                            rect.length_m);
+        width_m = std::min(rect.length_m > 1e-9 ? poly_area / rect.length_m : rect.width_m,
+                           rect.width_m);
+    }
+
+    if (width_m > length_m) std::swap(length_m, width_m);
+    out.length_m = length_m;
+    out.width_m = width_m;
     return out;
 }
 
