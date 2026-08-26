@@ -4,7 +4,7 @@
 //
 // What leaves this process is the privacy boundary of the whole product. The worker sees
 // a public street; what it emits is a number and a timestamp. No pixels, no bounding
-// boxes in image space, no vehicle appearance, no plate, no face -- those never leave
+// boxes in image space, no vehicle appearance, no plate, no face. Those never leave
 // the frame buffer, and the frame buffer is released immediately after processing.
 //
 // The published record is deliberately auditable rather than minimal. Every observation

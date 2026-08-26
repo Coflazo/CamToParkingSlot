@@ -182,7 +182,7 @@ class NdwAdapter(BaseAdapter):
             payload = gzip.decompress(payload)
         return ET.fromstring(payload)
 
-    # -- static table -------------------------------------------------------
+    # static table -------------------------------------------------------
     def run_truck_parking_table(self) -> IngestResult:
         result = IngestResult(source=f"{self.meta.name}-TruckParkingTable")
         root = self._fetch_xml(TRUCKPARKING_TABLE)
@@ -244,7 +244,7 @@ class NdwAdapter(BaseAdapter):
 
         The maximum is used instead. This value only ever serves as a sanity ceiling
         for validating reported vacancies, so an over-generous bound is the safe
-        direction -- it rejects the genuinely absurd (1157 free out of 210) without
+        direction: it rejects the genuinely absurd (1157 free out of 210) without
         discarding merely surprising numbers.
         """
         values = [
@@ -271,7 +271,7 @@ class NdwAdapter(BaseAdapter):
                 return parse_float(lat), parse_float(lon)
         return None, None
 
-    # -- live status --------------------------------------------------------
+    # live status --------------------------------------------------------
     def run_truck_parking_status(self) -> IngestResult:
         result = IngestResult(source=f"{self.meta.name}-TruckParkingStatus")
         root = self._fetch_xml(TRUCKPARKING_STATUS)
@@ -342,7 +342,7 @@ class NdwAdapter(BaseAdapter):
         log.info(result.summary())
         return result
 
-    # -- environmental zones ------------------------------------------------
+    # environmental zones ------------------------------------------------
     def run_emission_zones(self) -> IngestResult:
         """Parse environmental zones.
 

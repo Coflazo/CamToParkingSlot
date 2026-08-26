@@ -7,7 +7,7 @@ The important rule this module exists to enforce: **navigate by direct child, ne
 subtree search**. A DATEX II ``parkingRecordStatus`` carries a site-level
 ``parkingOccupancy`` *and* a nested ``groupOfParkingSpacesStatus`` for each sub-area,
 each with its own vacant-space count. ``ElementTree.iter()`` walks the whole subtree and
-happily returns a sub-area's figure as though it were the site's -- a real NDW record
+happily returns a sub-area's figure as though it were the site's, a real NDW record
 has four ``parkingNumberOfVacantSpaces`` elements reading 8, 4, 4 and 0. Only the first
 describes the car park.
 """

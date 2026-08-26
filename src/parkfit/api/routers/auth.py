@@ -100,7 +100,7 @@ async def delete_account(
     """Delete the account and everything attached to it.
 
     Vehicles cascade. This is a genuine deletion rather than a flag, because the data
-    involved -- vehicle dimensions and, if enabled, destination history -- is personal
+    involved, vehicle dimensions and, if enabled, destination history, is personal
     data and a right to erasure is not satisfied by hiding a row.
     """
     await session.delete(user)

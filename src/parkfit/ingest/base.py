@@ -4,7 +4,7 @@ Every adapter gets the same three guarantees:
 
 * **Identified, retried HTTP.** Overpass rejects anonymous clients outright and Socrata
   throttles them, so a User-Agent is mandatory rather than polite. Retries use
-  exponential backoff and only on transient status codes -- retrying a 400 just
+  exponential backoff and only on transient status codes; retrying a 400 just
   hammers a server with the same broken request.
 * **On-disk response caching.** A national RDW refresh is ~130k rows across eight
   datasets. Re-fetching that on every run during development is slow and rude; the
@@ -137,7 +137,7 @@ class BaseAdapter(ABC):
         self.cache = HttpCache(self.settings.cache_dir(self.meta.name.lower().replace(" ", "_")))
         self._client: httpx.Client | None = None
 
-    # -- HTTP ---------------------------------------------------------------
+    # HTTP ---------------------------------------------------------------
     @property
     def client(self) -> httpx.Client:
         if self._client is None:
@@ -238,7 +238,7 @@ class BaseAdapter(ABC):
         log.debug("%s: retrying in %.1fs", self.meta.name, delay)
         time.sleep(delay)
 
-    # -- contract -----------------------------------------------------------
+    # contract -----------------------------------------------------------
     @abstractmethod
     def run(self, **kwargs: Any) -> IngestResult:
         """Fetch from upstream and write to the database."""

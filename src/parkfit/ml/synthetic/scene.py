@@ -7,8 +7,8 @@ a tape measure while a camera watched, for every lighting condition you care abo
 So the scenes are *rendered from* the geometry instead. A scene starts as a kerb with
 vehicles at exactly-known positions and lengths, and the image is produced by projecting
 that geometry through a real camera matrix. The gap lengths are therefore known to the
-millimetre by construction, which makes the headline metric -- gap-length mean absolute
-error -- measurable rather than asserted.
+millimetre by construction, which makes the headline metric, gap-length mean absolute
+error, measurable rather than asserted.
 
 What it models, because each one breaks a different part of the pipeline:
 
@@ -66,7 +66,7 @@ class CameraModel:
 
         Camera axes in world terms are forward = (0, cos, -sin) and down = (0, sin, cos),
         so for a ground point the relative vector is (dx, dy, -h) and depth is
-        ``dy·cos + h·sin`` -- always positive ahead of the camera.
+        ``dy·cos + h·sin``, always positive ahead of the camera.
         """
         dx = world_x - self.origin_x
         dy = world_y - self.origin_y
@@ -81,7 +81,7 @@ class CameraModel:
         """Surveyed correspondences a calibration would be built from.
 
         In production these come from Amsterdam bay corners, which are published in the
-        same RD frame -- so a camera overlooking marked bays needs no field survey.
+        same RD frame, so a camera overlooking marked bays needs no field survey.
         """
         offsets = [
             (-spread_m, 12.0),
@@ -267,7 +267,7 @@ class SceneGenerator:
             gaps.append((cursor, kerb_length_m))
         return [(a, b) for a, b in gaps if b - a > 0.05]
 
-    # -- rendering ----------------------------------------------------------
+    # rendering ----------------------------------------------------------
     def _render(
         self,
         vehicles: list[ParkedVehicle],

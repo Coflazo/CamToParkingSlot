@@ -58,7 +58,7 @@ TEST_CASE("haversine: known Dutch city separations") {
     const LatLon amsterdam{52.3676, 4.9041};
     const LatLon rotterdam{51.9244, 4.4777};
     // Spherical great-circle distance is 57229.3 m. The WGS84 ellipsoidal geodesic is
-    // 57305.6 m, so the sphere is short by 76 m over 57 km -- 0.13 %. Across the ~2 km
+    // 57305.6 m, so the sphere is short by 76 m over 57 km, 0.13 %. Across the ~2 km
     // radii this product actually searches that is a couple of metres, far below the
     // positional error of the parking data itself, which is what justifies the sphere.
     CHECK_NEAR(haversine_m(amsterdam, rotterdam), 57229.3, 5.0);
@@ -118,7 +118,7 @@ TEST_CASE("min_area_rect: axis-aligned rectangle recovers its own dimensions") {
 
 TEST_CASE("min_area_rect: rotated rectangle recovers true metric size") {
     // A 5.0 x 2.0 rectangle rotated 30 degrees. A naive axis-aligned bounding box
-    // would report roughly 5.33 x 4.23 -- badly wrong for a fit decision.
+    // would report roughly 5.33 x 4.23, badly wrong for a fit decision.
     const double ang = 30.0 * kPi / 180.0;
     const double ca = std::cos(ang);
     const double sa = std::sin(ang);

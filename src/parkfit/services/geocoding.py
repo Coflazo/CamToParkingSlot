@@ -15,10 +15,10 @@ nothing for its own headline use case.
 
 The resolution order is therefore:
 
-1. **Local OpenStreetMap point-of-interest index** -- exact name, then alias, then
+1. **Local OpenStreetMap point-of-interest index**, exact name, then alias, then
    token-subset match. This is what answers "Rembrandt House Museum".
-2. **PDOK free search** -- authoritative for anything that is a real address.
-3. **PDOK suggest** -- last resort for partial or misspelled input.
+2. **PDOK free search**, authoritative for anything that is a real address.
+3. **PDOK suggest**, last resort for partial or misspelled input.
 
 Results are ranked by how precisely they locate a destination, not by which service
 answered. An exact address always outranks a fuzzy point-of-interest guess, because
@@ -129,7 +129,7 @@ def name_similarity(query: str, candidate: str, category: str | None = None) -> 
     """Score how well a query names a candidate place, in ``[0, 1]``.
 
     Deliberately token-based rather than edit-distance based. Dutch place names glue
-    words together and reorder freely -- "Rembrandt House Museum" against "Museum Het
+    words together and reorder freely, "Rembrandt House Museum" against "Museum Het
     Rembrandthuis" is nearly maximal edit distance but an obvious match once you look
     at which meaningful words appear on both sides, and allow for compounds.
     """
@@ -147,7 +147,7 @@ def name_similarity(query: str, candidate: str, category: str | None = None) -> 
     matched = q_tokens & c_tokens
 
     # Credit words that describe what the place *is* rather than what it is called.
-    # Users type "Museum Het Rembrandthuis" and "NEMO Science Museum" -- the word
+    # Users type "Museum Het Rembrandthuis" and "NEMO Science Museum", the word
     # "museum" is real information, not noise, and penalising it as an unmatched token
     # pushed both queries below a wrong PDOK street match.
     if category:
@@ -219,7 +219,7 @@ class HybridGeocoder:
             self._pdok.close()
             self._pdok = None
 
-    # -- public API ---------------------------------------------------------
+    # public API ---------------------------------------------------------
     def geocode(self, query: str, *, city: str | None = None, limit: int = 5) -> list[Destination]:
         """Resolve a destination, best match first."""
         query = (query or "").strip()
@@ -252,7 +252,7 @@ class HybridGeocoder:
         hits = self.geocode(query, city=city, limit=1)
         return hits[0] if hits else None
 
-    # -- point of interest search ------------------------------------------
+    # point of interest search ------------------------------------------
     def _search_pois(self, query: str, *, city: str | None, limit: int) -> list[Destination]:
         tokens = content_tokens(query)
         if not tokens:
@@ -309,8 +309,8 @@ class HybridGeocoder:
 
         Precision alone is not enough. It answers "how exactly do I know where this
         is", never "is this the place they meant". Scoring on precision alone let
-        "Van Gogh Allee" in Rhoon -- a street 30 km away, and streets score 0.70 --
-        outrank the actual Van Gogh Museum.
+        "Van Gogh Allee" in Rhoon, a street 30 km away, score 0.70 and outrank the
+        actual Van Gogh Museum.
         """
         relevance = name_similarity(query, hit.label)
         # An exact address keeps a floor: someone who types a full address wants that

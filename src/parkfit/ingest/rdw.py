@@ -7,14 +7,14 @@ Two facts about the real data shape the design:
 
 **Most facilities have no published height barrier.** Of 3137 specification rows only
 909 carry a non-zero ``maximumvehicleheight``; the other 2225 store a literal ``0``.
-Several geolocated Amsterdam garages -- IJ-oever, De Bijenkorf -- have no specification
+Several geolocated Amsterdam garages, IJ-oever, De Bijenkorf, have no specification
 row at all. So ``UNVERIFIED`` is the common case rather than an edge case, and treating
 a missing or zero height as "unlimited" would cheerfully route a van into a 2.0 m
 barrier. Zero is mapped to ``None``, never to infinity.
 
 **Only 371 of 14748 areas carry coordinates.** The GEO garage and park-and-ride layers
 are the only ones with a location. Everything else has to be geocoded from its name and
-municipality, which is a separate, slower pass -- so areas land in the database
+municipality, which is a separate, slower pass, so areas land in the database
 un-geocoded and inactive rather than being silently dropped.
 """
 
@@ -158,7 +158,7 @@ class RdwAdapter(SocrataAdapter):
         notes="Eight Socrata tables joined on (areamanagerid, areaid).",
     )
 
-    # -- lookups ------------------------------------------------------------
+    # lookups ------------------------------------------------------------
     def _load_geo(self) -> dict[tuple[str, str], dict[str, Any]]:
         """Coordinates, from the two GEO layers. Only 371 areas have any."""
         geo: dict[tuple[str, str], dict[str, Any]] = {}
@@ -260,7 +260,7 @@ class RdwAdapter(SocrataAdapter):
             }
         return out
 
-    # -- run ----------------------------------------------------------------
+    # run ----------------------------------------------------------------
     def run(self, *, limit: int | None = None, geocoded_only: bool = False) -> IngestResult:
         result = IngestResult(source=self.meta.name)
 
@@ -369,7 +369,7 @@ class RdwAdapter(SocrataAdapter):
         log.info(result.summary())
         return result
 
-    # -- helpers ------------------------------------------------------------
+    # helpers ------------------------------------------------------------
     def _register_licence(self, session) -> None:
         row = session.execute(
             select(SourceLicence).where(SourceLicence.source_name == self.meta.name)
@@ -438,7 +438,7 @@ def _city_from_areadesc(name: str | None) -> str | None:
     """Extract the municipality from names like ``Garage De Bijenkorf (Amsterdam)``.
 
     RDW has no city column on the area table, but the convention of appending the
-    municipality in parentheses is followed widely enough to be worth mining -- and it
+    municipality in parentheses is followed widely enough to be worth mining, and it
     is what lets the geocoding pass disambiguate a "Centrum" garage in one of forty
     Dutch towns that all have one.
     """

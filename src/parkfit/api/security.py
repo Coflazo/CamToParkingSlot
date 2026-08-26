@@ -5,7 +5,7 @@ bcrypt because it is memory-hard, which is what actually resists GPU cracking, a
 is the current OWASP recommendation.
 
 Accounts here hold vehicle dimensions and, if the user opts in, destination history.
-Destination history is unusually revealing -- it maps where somebody goes and when --
+Destination history is unusually revealing. It maps where somebody goes and when,
 which is why it is opt-in and off by default.
 """
 

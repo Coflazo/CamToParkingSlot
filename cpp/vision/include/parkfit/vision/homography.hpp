@@ -10,12 +10,12 @@
 //
 // Solved with the normalised Direct Linear Transform. Normalisation is not optional:
 // raw pixel coordinates give the DLT design matrix a condition number in the millions,
-// and the resulting homography is numerically worthless. Hartley's isotropic scaling --
-// centre the points, scale so the mean distance from the origin is sqrt(2) -- fixes it.
+// and the resulting homography is numerically worthless. Hartley's isotropic scaling
+// (centre the points, scale so the mean distance from the origin is sqrt(2)) fixes it.
 //
 // World coordinates are RD New metres, which is exactly what Amsterdam publishes its
 // parking-bay corners in. Those corners are surveyed reference points, freely available,
-// in the same metric frame the geometry needs -- so calibrating a camera that overlooks
+// in the same metric frame the geometry needs, so calibrating a camera that overlooks
 // marked bays needs no field survey at all.
 
 #pragma once

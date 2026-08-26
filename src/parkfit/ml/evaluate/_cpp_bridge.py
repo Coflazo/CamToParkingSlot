@@ -1,7 +1,7 @@
 """Thin bridge to the C++ vision geometry for evaluation.
 
 The gap estimator and temporal state machine live in headers rather than in the pybind11
-module, because the search path does not need them — only the worker and this harness do.
+module, because the search path does not need them, only the worker and this harness do.
 Rather than widen the extension module for a test-only path, the evaluation compiles a
 small helper on demand and caches it.
 
@@ -109,8 +109,8 @@ def measure_gaps(
     """Measure free kerb stretches, mirroring parkfit::vision::CurbGapEstimator.
 
     Only the *bottom* edge of a detection is projected. That edge is where the vehicle
-    meets the ground, and the homography maps the ground plane and nothing else —
-    projecting the box centre would place every car metres further away than it is, with
+    meets the ground, and the homography maps the ground plane and nothing else.
+    Projecting the box centre would place every car metres further away than it is, with
     the error growing with distance.
     """
     h = _solve_homography(image_points, world_points)

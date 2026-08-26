@@ -33,7 +33,7 @@ Each of these cost real debugging time. They are recorded so the next person doe
 have to rediscover them.
 
 **RDW publishes `0` for an unknown height limit**, and 2,225 of 3,137 specification rows
-do. Zero maps to `NULL`, never to unlimited — treating it as unlimited would route a van
+do. Zero maps to `NULL`, never to unlimited, treating it as unlimited would route a van
 into a 2.0 m barrier. Several geolocated Amsterdam garages have no specification row at
 all, so `UNVERIFIED` is the ordinary answer rather than the edge case.
 

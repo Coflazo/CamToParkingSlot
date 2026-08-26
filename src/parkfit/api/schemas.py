@@ -2,7 +2,7 @@
 
 Every availability claim the API makes carries four things beside the number itself:
 where it came from, when it was observed, how confident we are, and what wording the
-client is permitted to show. That is not decoration -- it is the difference between a
+client is permitted to show. That is not decoration; it is the difference between a
 product that says "47 spaces, updated 23 seconds ago" and one that says "47 spaces" and
 quietly means "47 spaces at some point this afternoon".
 """

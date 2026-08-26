@@ -29,7 +29,7 @@ async def lookup_plate(payload: PlateLookupRequest) -> PlateLookupResponse:
     for a person and the product only needs the dimensions; keeping it would build a
     licence-plate database as a side effect of a parking search.
 
-    Height is never returned, because the register does not publish it -- and height is
+    Height is never returned, because the register does not publish it, and height is
     the dimension a barrier physically stops. It is always in ``unconfirmed_fields``.
     """
     with RdwVehicleClient() as client:

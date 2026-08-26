@@ -3,7 +3,7 @@
 // A deliberately tiny test harness.
 //
 // This exists instead of Catch2 or GoogleTest so the C++ tree builds with nothing but
-// a compiler -- no FetchContent, no network at configure time, no vendored megabytes.
+// a compiler, no FetchContent, no network at configure time, no vendored megabytes.
 // It covers exactly what these tests need: named cases, file-and-line failure reporting,
 // tolerance comparison for floating point, and a CTest-compatible exit code.
 
@@ -95,7 +95,7 @@ inline int run_all() {
         auto pf_b = (b);                                                      \
         if (!(pf_a == pf_b)) {                                                \
             ::pftest::report_failure(__FILE__, __LINE__,                       \
-                                     "CHECK_EQ(" #a ", " #b ") -- values differ"); \
+                                     "CHECK_EQ(" #a ", " #b "): values differ"); \
         }                                                                     \
     } while (0)
 

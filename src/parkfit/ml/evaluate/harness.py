@@ -5,7 +5,7 @@ asserted. The numbers come from synthetic scenes whose gap lengths are known to 
 millimetre by construction, so "gap-length mean absolute error" is a measurement and not
 a hope.
 
-One metric matters more than the others and is listed first: the **false-free rate** —
+One metric matters more than the others and is listed first: the **false-free rate**,
 how often the system calls a space free when it is not. Overall accuracy hides it. A
 detector that reports every space occupied scores well on accuracy and is useless; one
 that reports every space free scores identically and is actively harmful. Only the
@@ -160,7 +160,7 @@ def evaluate_fit_engine(*, samples: int = 4000, seed: int = 11) -> EvaluationRes
     """Measure the false-'fits' rate against exact bay and vehicle geometry.
 
     A false 'fits' is the fit-engine analogue of a false-free: the system said a vehicle
-    would go into a space that it physically cannot. Ground truth here is arithmetic --
+    would go into a space that it physically cannot. Ground truth here is arithmetic:
     the vehicle either occupies less than the bay or it does not.
     """
     import random

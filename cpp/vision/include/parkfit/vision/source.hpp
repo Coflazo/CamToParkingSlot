@@ -10,7 +10,7 @@
 //
 // Sampling is deliberately slow. Parking changes over minutes; there is nothing in a
 // 25 fps stream that 0.125 fps does not capture. Sampling slowly reduces bandwidth,
-// processor load, and -- most importantly -- how much imagery of a public street exists
+// processor load, and, most importantly, how much imagery of a public street exists
 // in memory at any moment.
 
 #pragma once

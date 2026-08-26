@@ -4,7 +4,7 @@
  * The response types mirror the server schemas deliberately closely, including the
  * evidence block. Every availability claim arrives with its source, observation time
  * and confidence label, and the UI is built to show them rather than to flatten them
- * into a number — a parking app that displays "47 spaces" without saying when it last
+ * into a number, a parking app that displays "47 spaces" without saying when it last
  * knew that is teaching its users not to trust it.
  */
 

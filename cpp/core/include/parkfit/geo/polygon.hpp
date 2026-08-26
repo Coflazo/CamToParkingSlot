@@ -205,12 +205,12 @@ inline MinAreaRect min_area_rect(const Ring& poly) {
 /// The minimum-area rectangle *encloses* the polygon, which makes it the wrong
 /// measure for a fit decision. Amsterdam bays drawn against a curving kerb are
 /// trapezoids: one real Abidjanweg bay has long sides of 5.48 m and 7.46 m, and the
-/// enclosing rectangle reports 7.46 -- two metres of kerb that do not exist, in the
+/// enclosing rectangle reports 7.46, two metres of kerb that do not exist, in the
 /// optimistic direction, for the number that decides whether a car fits.
 ///
 /// Worse, bay polygons are frequently *skewed*: Amsterdam canal-side parking is drawn
 /// as angled parallelograms. A real Prinsengracht bay has sides of 5.66 m and 2.61 m at
-/// 48 degrees, and its enclosing rectangle is 7.40 x 1.89 m -- a box rotated to hug a
+/// 48 degrees, and its enclosing rectangle is 7.40 x 1.89 m, a box rotated to hug a
 /// diagonal, matching neither dimension of the actual bay.
 ///
 /// A quadrilateral is therefore measured by its own edges: pair the opposite sides,

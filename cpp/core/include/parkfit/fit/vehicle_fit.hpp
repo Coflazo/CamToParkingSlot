@@ -62,8 +62,8 @@ struct Margins {
     double bay_lateral_total_cm{25.0};
 
     /// Clearance across a *parallel* kerbside bay, where the physics are different:
-    /// there is no car beside you. One flank is the pavement -- opening the passenger
-    /// door onto it is the entire point -- and the other is the traffic lane. NEN 2443
+    /// there is no car beside you. One flank is the pavement, opening the passenger
+    /// door onto it is the entire point, and the other is the traffic lane. NEN 2443
     /// specifies parallel bays at 1.80 to 2.00 m for cars 1.75 to 1.85 m wide, so the
     /// standard itself assumes a near-zero lateral margin.
     ///

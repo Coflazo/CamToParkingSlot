@@ -9,7 +9,7 @@ probability accordingly.
 That count is kept in memory rather than queried from the database, for two reasons.
 
 **Latency.** Recording recommendations synchronously made every search block on a write
-it did not need -- and nothing in the response depends on those rows being durable
+it did not need, and nothing in the response depends on those rows being durable
 before it returns. Bookkeeping does not belong on the request path.
 
 **Accuracy.** The ledger sees a recommendation issued microseconds ago; a query against

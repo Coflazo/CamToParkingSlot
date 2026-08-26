@@ -1,7 +1,7 @@
 /**
  * Map rendering.
  *
- * Uses OpenStreetMap raster tiles, which need no API key and no account — the product
+ * Uses OpenStreetMap raster tiles, which need no API key and no account, the product
  * runs on a laptop with nothing configured. The OSM tile usage policy asks for a
  * identifying User-Agent and modest volume, which a single-user dev app satisfies;
  * a real deployment should serve its own tiles from the same extract the router uses.

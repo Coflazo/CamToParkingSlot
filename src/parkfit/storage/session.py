@@ -1,7 +1,7 @@
 """Engine and session management for both SQLite and PostgreSQL.
 
 The application code never branches on database vendor. Where behaviour genuinely
-differs -- spatial predicates, upsert syntax -- the difference lives in
+differs, spatial predicates, upsert syntax, the difference lives in
 :mod:`parkfit.storage.dialects` behind a common interface.
 """
 
@@ -41,8 +41,8 @@ def _tune_sqlite(dbapi_connection, _connection_record) -> None:
     cursor.execute("PRAGMA busy_timeout=10000")
     cursor.execute("PRAGMA cache_size=-64000")  # 64 MB page cache
     # Default autocheckpoint is 1000 pages, about 4 MB. A national ingest leaves a WAL
-    # far larger than that, and the *next* ordinary write inherits the checkpoint --
-    # which is how a 10-row recommendation insert came to take 1.4 seconds, and why
+    # far larger than that, and the *next* ordinary write inherits the checkpoint.
+    # That is how a 10-row recommendation insert came to take 1.4 seconds, and why
     # search latency alternated between 140 ms and 4 s for no visible reason.
     # Checkpointing is moved to maintenance instead; see `checkpoint()`.
     cursor.execute("PRAGMA wal_autocheckpoint=8000")

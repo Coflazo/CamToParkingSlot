@@ -1,9 +1,9 @@
 /**
- * ParkFit NL — application entry point.
+ * ParkFit NL, application entry point.
  *
  * The interface has one job beyond finding parking: never let a claim appear without
  * the evidence behind it. Every result shows what is known, where it came from and how
- * old it is, and a fit verdict the driver can act on — including "we could not check",
+ * old it is, and a fit verdict the driver can act on, including "we could not check",
  * which is a real answer and is shown as one rather than being quietly rounded to yes.
  */
 

@@ -83,7 +83,7 @@ async def create_search(
     """Run a parking search.
 
     Anonymous searches are allowed. A driver should not have to create an account to
-    find out where they can park, and a search without a vehicle still works -- it just
+    find out where they can park, and a search without a vehicle still works, it just
     cannot verify fit, and every result says so.
     """
     vehicle_profile = VehicleProfile()
