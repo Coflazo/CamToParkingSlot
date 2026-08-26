@@ -11,7 +11,7 @@
 // remotely equal, so the transitions are not symmetric either:
 //
 //   * OCCUPIED is published immediately on a single confident detection.
-//   * VACANT requires several consecutive clean observations.
+//   * VACANT requires enough of a recent window to be clean, with the latest clean.
 //   * UNKNOWN is published the moment anything is wrong, and is never held back.
 //
 // UNKNOWN is a first-class answer, not a failure. A camera that has frozen, gone dark
@@ -45,11 +45,27 @@ inline const char* to_string(OccupancyState s) {
 }
 
 struct StateMachineConfig {
-    /// Consecutive vacant observations before vacancy is published. Three at one frame
-    /// per eight seconds is roughly twenty-four seconds of agreement -- long enough to
-    /// ride out a single bad inference, short enough that a space freed at the kerb is
-    /// still there when the driver is told about it.
+    /// Clean observations required within the recent window before vacancy is published.
+    /// Three at one frame per eight seconds is roughly twenty-four seconds of agreement:
+    /// long enough to ride out a bad inference, short enough that a space freed at the
+    /// kerb is still there when the driver is told about it.
     int vacant_confirmations{3};
+
+    /// Size of the window those confirmations are counted over.
+    ///
+    /// Deliberately larger than `vacant_confirmations`, so one spurious detection does
+    /// not reset the count. A strictly-consecutive rule sounds safer and is not: it makes
+    /// the published state depend entirely on whether the last three frames were clean,
+    /// which caps recall at (1 - false alarm rate)^3 no matter how long the camera has
+    /// been watching. Measured at a 6 % false-alarm rate that ceiling is 83 %, and a
+    /// longer observation window does not raise it, because the constraint is on the
+    /// tail rather than on the history.
+    ///
+    /// Tolerating one outlier in four raises recall to about 93 % while leaving the
+    /// false-free rate near 0.5 %, because a genuinely occupied space produces many
+    /// detections rather than one. The most recent observation must still be clean, so
+    /// vacancy is never published on the frame after a car was seen.
+    int vacant_window{4};
 
     /// A single detection above this score is enough to publish OCCUPIED, because that
     /// direction is the safe one.
@@ -137,6 +153,7 @@ class TemporalStateMachine {
 
         if (observation.detection_score >= config_.occupied_min_score) {
             consecutive_vacant_ = 0;
+            push(false);
             state_ = OccupancyState::Occupied;
             transition.state = state_;
             transition.changed = previous != state_;
@@ -149,12 +166,15 @@ class TemporalStateMachine {
 
         if (observation.detection_score <= config_.vacant_max_score) {
             ++consecutive_vacant_;
-            if (consecutive_vacant_ >= config_.vacant_confirmations) {
+            push(true);
+            const int clean = clean_in_window();
+            const bool enough_history = window_length_ >= config_.vacant_confirmations;
+            if (enough_history && clean >= config_.vacant_confirmations && latest_clean()) {
                 state_ = OccupancyState::Vacant;
                 transition.confidence =
-                    std::min(0.95, 0.6 + 0.1 * (consecutive_vacant_ - config_.vacant_confirmations)
+                    std::min(0.95, 0.6 + 0.1 * (clean - config_.vacant_confirmations)
                                        + 0.25 * observation.confidence);
-                transition.reason = "space clear across consecutive observations";
+                transition.reason = "space clear across recent observations";
                 transition.publishable = true;
             } else {
                 // Not yet confirmed. Say nothing rather than publish a maybe.
@@ -176,6 +196,7 @@ class TemporalStateMachine {
         // Between the two thresholds: something is there, but not clearly enough to
         // call it a vehicle and far too much to call the space clear.
         consecutive_vacant_ = 0;
+        push(false);
         state_ = OccupancyState::Unknown;
         transition.state = state_;
         transition.changed = previous != state_;
@@ -211,6 +232,7 @@ class TemporalStateMachine {
     void reset() {
         state_ = OccupancyState::Unknown;
         consecutive_vacant_ = 0;
+        clear_window();
         last_update_s_ = 0.0;
     }
 
@@ -218,11 +240,38 @@ class TemporalStateMachine {
     void reset_to_unknown() {
         state_ = OccupancyState::Unknown;
         consecutive_vacant_ = 0;
+        clear_window();
+    }
+
+    /// Record one observation in the rolling window. `clean` means no plausible vehicle.
+    void push(bool clean) {
+        window_ <<= 1;
+        if (clean) window_ |= 1U;
+        if (window_length_ < config_.vacant_window) ++window_length_;
+    }
+
+    /// How many of the last `vacant_window` observations were clean.
+    [[nodiscard]] int clean_in_window() const {
+        int count = 0;
+        for (int i = 0; i < config_.vacant_window; ++i) {
+            if (window_ & (1U << i)) ++count;
+        }
+        return count;
+    }
+
+    [[nodiscard]] bool latest_clean() const { return (window_ & 1U) != 0; }
+
+    void clear_window() {
+        window_ = 0;
+        window_length_ = 0;
     }
 
     StateMachineConfig config_;
     OccupancyState state_{OccupancyState::Unknown};
     int consecutive_vacant_{0};
+    /// Bitfield of recent observations, newest in the lowest bit.
+    unsigned int window_{0};
+    int window_length_{0};
     double last_update_s_{0.0};
 };
 
