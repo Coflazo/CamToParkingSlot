@@ -47,6 +47,18 @@ def _isolate_settings() -> Iterator[None]:
 
 
 @pytest.fixture
+def scratch_dir(_isolate_settings) -> Iterator[Path]:
+    """A writable scratch directory, standing in for ``tmp_path``.
+
+    Same reason as ``_isolate_settings``: pytest's own temp factory cannot create its
+    root on this machine, so a test that asks for ``tmp_path`` errors before it runs.
+    """
+    root = Path(os.environ["PARKFIT_DATA_DIR"]) / "scratch"
+    root.mkdir(parents=True, exist_ok=True)
+    yield root
+
+
+@pytest.fixture
 def session(_isolate_settings) -> Iterator:
     """A clean database for one test."""
     from parkfit.storage.session import create_all, drop_all, session_scope

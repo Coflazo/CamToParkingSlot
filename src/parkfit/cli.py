@@ -12,12 +12,20 @@ import sys
 from datetime import UTC, datetime
 from typing import Annotated
 
-import typer
-from rich.console import Console
-from rich.table import Table
+from parkfit.numeric import limit_numeric_threads
 
-from parkfit import __version__
-from parkfit.config import get_settings
+# Before anything that pulls in numpy. BLAS and OpenMP size their scratch pools from the
+# core count when the native library loads, and nothing here benefits from them; see
+# parkfit.numeric for why this has to happen at the top of the file rather than in the
+# command that trains a model.
+limit_numeric_threads()
+
+import typer  # noqa: E402
+from rich.console import Console  # noqa: E402
+from rich.table import Table  # noqa: E402
+
+from parkfit import __version__  # noqa: E402
+from parkfit.config import get_settings  # noqa: E402
 
 app = typer.Typer(
     name="pf",
@@ -27,8 +35,12 @@ app = typer.Typer(
 )
 ingest_app = typer.Typer(help="Pull open data into the local database.", no_args_is_help=True)
 cameras_app = typer.Typer(help="Manage the camera registry.", no_args_is_help=True)
+predict_app = typer.Typer(
+    help="Occupancy prediction: history, decay rates, learned model.", no_args_is_help=True
+)
 app.add_typer(ingest_app, name="ingest")
 app.add_typer(cameras_app, name="cameras")
+app.add_typer(predict_app, name="predict")
 
 console = Console()
 
@@ -519,6 +531,169 @@ def synth(
         f"-> {out}"
     )
     console.print(f"[dim]control points: {len(manifest['control_points'])}[/dim]")
+
+
+@predict_app.command("history")
+def predict_history(
+    days: int = typer.Option(21, help="How many days of history to simulate."),
+    bays: int = typer.Option(150, help="How many kerb bays to give a history to."),
+    facilities: int = typer.Option(40, help="How many car parks to give a history to."),
+    interval: int = typer.Option(30, help="Minutes between persisted observations."),
+    seed: int = typer.Option(20260826),
+) -> None:
+    """Simulate occupancy history for a sample of real targets.
+
+    Replaces any history this command wrote before, and never touches an observation from
+    a real source.
+    """
+    from parkfit.prediction.history import generate_history
+    from parkfit.storage.session import session_scope
+
+    with session_scope() as session:
+        report, _ = generate_history(
+            session,
+            days=days,
+            bays=bays,
+            facilities=facilities,
+            sample_interval_min=interval,
+            seed=seed,
+        )
+    console.print(f"[green]{report.describe()}[/green]")
+
+
+@predict_app.command("lambda")
+def predict_lambda(
+    days: int = typer.Option(21, help="Simulation window, matched to the stored history."),
+    bays: int = typer.Option(150),
+    facilities: int = typer.Option(40),
+    interval: int = typer.Option(30),
+    seed: int = typer.Option(20260826),
+    from_observations: bool = typer.Option(
+        False,
+        "--from-observations",
+        help="Estimate from stored samples only, as production must, instead of from the "
+        "simulation's own one-minute transition counts.",
+    ),
+) -> None:
+    """Estimate per-segment vacancy decay rates and store them.
+
+    Re-runs the simulation to recover its transition counts, which are not persisted; the
+    seed makes that reproduce the history exactly rather than generate a different one.
+    """
+    from parkfit.prediction import lambda_est
+    from parkfit.prediction.history import generate_history
+    from parkfit.storage.session import session_scope
+
+    with session_scope() as session:
+        _, simulated = generate_history(
+            session,
+            days=days,
+            bays=bays,
+            facilities=facilities,
+            sample_interval_min=interval,
+            seed=seed,
+        )
+        if from_observations:
+            counts = lambda_est.counts_from_observations(session, list(simulated.keys()))
+        else:
+            counts = {k: v.counts for k, v in simulated.items()}
+
+        report = lambda_est.estimate_and_store(session, counts, truth=simulated)
+        console.print(f"[green]{report.describe()}[/green]")
+
+        cost = lambda_est.measure_sampling_cost(session, simulated)
+
+    if cost:
+        table = Table(title=f"what {interval}-minute polling costs the decay estimate")
+        table.add_column("measurement")
+        table.add_column("value", justify="right")
+        table.add_row("rate from 1-minute transitions", f"{cost['fine_lambda_mean']:.4f} /min")
+        table.add_row(
+            f"rate from {interval}-minute samples", f"{cost['coarse_lambda_mean']:.4f} /min"
+        )
+        table.add_row("recovered fraction", f"{cost['coarse_over_fine'] * 100:.0f} %")
+        console.print(table)
+        console.print(
+            "[dim]Sparse polling misses turnovers that begin and end inside one sample, so "
+            "it under-reports the rate. This is a property of the feed, not of the "
+            "estimator.[/dim]"
+        )
+
+
+@predict_app.command("train")
+def predict_train(
+    source: str = typer.Option(
+        "synthetic-history",
+        help="Only train on observations from this source. Pass an empty string for all.",
+    ),
+    trees: int = typer.Option(400),
+    threads: int = typer.Option(4),
+    out: str = typer.Option("data/models/occupancy.lgb"),
+) -> None:
+    """Fit the occupancy model and score it against its baselines."""
+    import pathlib as _pathlib
+
+    from parkfit.prediction import model as occupancy_model
+    from parkfit.storage.session import session_scope
+
+    with session_scope() as session:
+        report = occupancy_model.train(
+            session,
+            source_name=source or None,
+            model_path=_pathlib.Path(out),
+            num_trees=trees,
+            num_threads=threads,
+        )
+
+    if not report.trained:
+        console.print(f"[yellow]{report.describe()}[/yellow]")
+        raise typer.Exit(code=1)
+
+    console.print(f"[green]{report.rows:,} rows[/green] over {report.targets:,} targets")
+    table = Table(title="occupancy model against its baselines (Brier score, lower is better)")
+    table.add_column("held out")
+    table.add_column("rows", justify="right")
+    table.add_column("model", justify="right")
+    table.add_column("flat prior", justify="right")
+    table.add_column("per kind", justify="right")
+    table.add_column("per target", justify="right")
+    table.add_column("AUC", justify="right")
+    for split in report.splits:
+        per_target = "n/a" if split.per_target_brier is None else f"{split.per_target_brier:.4f}"
+        table.add_row(
+            split.name,
+            f"{split.rows:,}",
+            f"{split.model_brier:.4f}",
+            f"{split.flat_prior_brier:.4f}",
+            f"{split.per_kind_brier:.4f}",
+            per_target,
+            f"{split.model_auc:.3f}",
+        )
+    console.print(table)
+
+    top = sorted(report.feature_importance.items(), key=lambda kv: -kv[1])[:6]
+    console.print("[dim]top features: " + ", ".join(name for name, _ in top) + "[/dim]")
+    console.print(f"[dim]model written to {report.model_path}[/dim]")
+
+
+@predict_app.command("all")
+def predict_all(
+    days: int = typer.Option(21),
+    bays: int = typer.Option(150),
+    facilities: int = typer.Option(40),
+    interval: int = typer.Option(30),
+) -> None:
+    """Run the whole prediction pipeline: history, decay rates, then the model."""
+    predict_history(days=days, bays=bays, facilities=facilities, interval=interval, seed=20260826)
+    predict_lambda(
+        days=days,
+        bays=bays,
+        facilities=facilities,
+        interval=interval,
+        seed=20260826,
+        from_observations=False,
+    )
+    predict_train(source="synthetic-history", trees=400, threads=4, out="data/models/occupancy.lgb")
 
 
 @app.command()
