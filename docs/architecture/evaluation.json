@@ -1,0 +1,96 @@
+{
+ "metrics": {
+  "false_free_rate": 0.006452,
+  "vacant_recall": 0.919403,
+  "vacant_precision": 0.990354,
+  "false_fit_rate": 0.0,
+  "false_reject_rate": 0.0,
+  "gap_mae_m": 0.000932,
+  "gap_p95_m": 0.002433,
+  "gap_max_m": 0.002906,
+  "search_median_ms": 163.6511,
+  "search_p95_ms": 182.1242,
+  "search_max_ms": 182.1242
+ },
+ "counts": {
+  "trials": 800,
+  "truly_occupied": 465,
+  "truly_vacant": 335,
+  "false_free": 3,
+  "missed_vacant": 27,
+  "samples": 1200,
+  "accepted": 435,
+  "false_fits": 0,
+  "false_rejects": 0,
+  "scenes": 18,
+  "gaps_matched": 41,
+  "gaps_missed": 0,
+  "gaps_spurious": 0,
+  "runs": 6,
+  "empty_results": 0
+ },
+ "per_condition": {
+  "day": {
+   "mae_m": 0.0006848577802249048,
+   "count": 6
+  },
+  "dusk": {
+   "mae_m": 0.0008851535200600225,
+   "count": 10
+  },
+  "glare": {
+   "mae_m": 0.0007591625801358267,
+   "count": 6
+  },
+  "night": {
+   "mae_m": 0.0012539921686146593,
+   "count": 8
+  },
+  "overcast": {
+   "mae_m": 0.0005461238306886015,
+   "count": 6
+  },
+  "rain": {
+   "mae_m": 0.0014806782959347232,
+   "count": 5
+  }
+ },
+ "notes": [],
+ "targets": {
+  "false_free_rate": {
+   "target": 0.02,
+   "higher_is_better": false,
+   "unit": "%"
+  },
+  "vacant_precision": {
+   "target": 0.98,
+   "higher_is_better": true,
+   "unit": "%"
+  },
+  "vacant_recall": {
+   "target": 0.9,
+   "higher_is_better": true,
+   "unit": "%"
+  },
+  "gap_mae_m": {
+   "target": 0.25,
+   "higher_is_better": false,
+   "unit": "m"
+  },
+  "gap_p95_m": {
+   "target": 0.5,
+   "higher_is_better": false,
+   "unit": "m"
+  },
+  "false_fit_rate": {
+   "target": 0.02,
+   "higher_is_better": false,
+   "unit": "%"
+  },
+  "search_p95_ms": {
+   "target": 500.0,
+   "higher_is_better": false,
+   "unit": "ms"
+  }
+ }
+}

@@ -437,6 +437,54 @@ def camera_audit(
 # meta
 # ---------------------------------------------------------------------------
 @app.command()
+def evaluate(
+    scenes: int = typer.Option(60, help="Synthetic scenes for gap measurement."),
+    quick: bool = typer.Option(False, help="Fewer trials, for a fast check."),
+    report: str = typer.Option("docs/architecture/evaluation.json"),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """Measure accuracy against the specification targets.
+
+    The headline number is the false-free rate: how often a space is called free when it
+    is not. Overall accuracy hides it, because a detector that calls everything occupied
+    and one that calls everything free score identically on accuracy and differ entirely
+    in whether they are safe to ship.
+    """
+    _setup_logging(verbose)
+    import pathlib as _pathlib
+
+    from parkfit.ml.evaluate.harness import format_report, run_all, write_report
+
+    console.print("[dim]running evaluation, this takes a moment...[/dim]")
+    result = run_all(scenes=scenes, quick=quick)
+    console.print()
+    console.print(format_report(result))
+    path = write_report(result, _pathlib.Path(report))
+    console.print()
+    console.print(f"[dim]machine-readable report written to {path}[/dim]")
+
+
+@app.command("synth")
+def synth(
+    out: str = typer.Option("data/synthetic", help="Where to write the dataset."),
+    count: int = typer.Option(40, help="Number of scenes."),
+    seed: int = typer.Option(0),
+) -> None:
+    """Render a synthetic dataset with exact ground-truth gap lengths."""
+    import pathlib as _pathlib
+
+    from parkfit.ml.synthetic.scene import write_dataset
+
+    manifest = write_dataset(_pathlib.Path(out), count=count, seed=seed)
+    total_gaps = sum(len(s["gaps_m"]) for s in manifest["scenes"])
+    console.print(
+        f"[green]{len(manifest['scenes'])} scenes[/green] with {total_gaps} ground-truth gaps "
+        f"-> {out}"
+    )
+    console.print(f"[dim]control points: {len(manifest['control_points'])}[/dim]")
+
+
+@app.command()
 def status() -> None:
     """Show what is loaded and how much data is present."""
     from sqlalchemy import func, select
