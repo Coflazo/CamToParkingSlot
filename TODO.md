@@ -17,7 +17,7 @@ Live tracker. Updated as each phase lands.
 | P4 | Availability prediction | `[x]` **learned model beats every baseline** |
 | P5 | C++ vision worker | `[x]` |
 | P6 | Camera registry + source auditor | `[x]` |
-| P7 | ML pipeline | `[~]` synthetic renderer live; ONNX detector pending |
+| P7 | ML pipeline | `[x]` **detector F1 0.994, C++/Python parity exact** |
 | P8 | Web PWA | `[x]` |
 | P9 | Test suite + evaluation harness | `[x]` **203 tests, 7/7 targets met** |
 | P10 | Docs, ops, delivery | `[x]` |
@@ -40,14 +40,14 @@ Kerb-gap measurement error on the replay fixture: **worst 1.0 cm** (target 25 cm
 
 ---
 
-## P0, Foundation `[x]`
+## P0: Foundation `[x]`
 
 - [x] Repo, `.gitignore`, git remote `Coflazo/CamToParkingSlot`
 - [x] `uv` env, Python 3.12.10, all dependencies incl. torch CPU / onnxruntime / OpenCV
 - [x] CMake auto-discovers MSVC 14.43 + bundled CMake + Ninja from VS Build Tools
 - [x] `tasks.ps1` runner, hardened against PowerShell 5.1 native-stderr behaviour
 
-## P1, C++ core `[x]`
+## P1: C++ core `[x]`
 
 - [x] `geo/rd.hpp`, RD New ↔ WGS84, **validated against pyproj: 0.23 m, round-trip 1.5 cm**
 - [x] `geo/polygon.hpp`, convex hull, rotating-calipers rectangle, quadrilateral bay measurement
@@ -57,7 +57,7 @@ Kerb-gap measurement error on the replay fixture: **worst 1.0 cm** (target 25 cm
 - [x] pybind11 bindings, **bit-for-bit parity** with the Python implementations
 - [x] Zero-dependency test harness (no Catch2 download needed)
 
-## P2, Data ingestion + storage `[x]`
+## P2: Data ingestion + storage `[x]`
 
 - [x] SQLAlchemy 2.0 schema, portable SQLite / PostgreSQL, append-only observations
 - [x] **RDW**, 8 Socrata tables joined; 4,871 facilities
@@ -67,7 +67,7 @@ Kerb-gap measurement error on the replay fixture: **worst 1.0 cm** (target 25 cm
 - [x] **PDOK**, address geocoding
 - [x] Provenance + licence registry on every record; source-priority conflict resolution
 
-## P3, Search, routing, API `[x]`
+## P3: Search, routing, API `[x]`
 
 - [x] Hybrid geocoder, **18/18 on real destination names**
 - [x] Routing: native A* + one-to-many Dijkstra → OSRM → straight-line
@@ -76,14 +76,14 @@ Kerb-gap measurement error on the replay fixture: **worst 1.0 cm** (target 25 cm
 - [x] FastAPI: 12 endpoints, JWT + Argon2id, SSE availability stream
 - [x] In-memory recommendation ledger for anti-herding
 
-## P4, Availability prediction `[~]`
+## P4: Availability prediction `[~]`
 
 - [x] Exponential survival decay `P(eta) = P(now)·e^(−λt)`
 - [x] Per-target-type base rates (0.15 metered bay, 0.62 facility)
 - [x] `SegmentDynamics` table for learned per-segment, per-weekday, per-quarter-hour λ
 - [ ] LightGBM occupancy model + synthetic history generator to bootstrap it
 
-## P5, C++ vision worker `[x]`, 37 tests
+## P5: C++ vision worker `[x]`, 37 tests
 
 - [x] `frame.hpp`, owned buffer, explicit release
 - [x] `health.hpp`, brightness, Laplacian sharpness, clipping, 64-bit gradient freeze hash
@@ -95,7 +95,7 @@ Kerb-gap measurement error on the replay fixture: **worst 1.0 cm** (target 25 cm
 - [x] `publisher.hpp`, the privacy boundary: no pixels leave the process
 - [x] `pf_cv_worker`, refuses an unauthorised live URL as a hard stop
 
-## P6, Camera registry + auditor `[x]`
+## P6: Camera registry + auditor `[x]`
 
 - [x] Registry with a two-sided permission gate (dev accepts `robots_ok`, prod does not)
 - [x] Ownership attestation requiring an agreement reference
@@ -121,17 +121,81 @@ pf cameras enable cam_017
 Verified robots verdicts (2026-08-26): `skylinewebcams.com` and `livetraffic.eu` allow
 all agents; `worldcams.tv` disallows `/player`, `/ajax/`, `/go`, `/list/`.
 
-## P7, ML pipeline `[~]`
+## P7: ML pipeline `[x]`
 
 - [x] Synthetic parking-scene generator, cars as projected 3-D boxes through a real
       camera matrix, six lighting conditions, **exact ground-truth gap lengths**
-- [ ] Occupancy classifier + lightweight detector, PyTorch → ONNX
-- [ ] ONNX Runtime C++ backend wired into `pf_cv_worker`
+- [x] Detection dataset built from rendered scenes: 750 scenes, 1,294 boxes
+- [x] CenterNet-style detector in PyTorch, 322,331 parameters
+- [x] ONNX export with a PyTorch-vs-ONNX-Runtime verification gate
+- [x] ONNX Runtime C++ backend, loaded dynamically, wired into `pf_cv_worker`
+- [x] PPM replay so the worker can run a real model over real rendered frames
 
 The synthetic renderer is what makes gap MAE honestly measurable: it knows the true gap
 because it placed the cars. Real footage cannot tell you that without a survey team.
 
-## P8, Web PWA `[x]`
+### Detector accuracy, held-out scenes
+
+| Metric | Value |
+|---|---:|
+| Precision | **0.996** |
+| Recall | **0.992** |
+| F1 | **0.994** |
+| Box corner MAE | **0.81 px** |
+
+F1 by lighting condition: day 1.000, overcast 1.000, rain 1.000, dusk 1.000, glare 0.988,
+night 0.974. Night is the hardest, which is both expected and what the numbers say.
+
+### The export is verified, not assumed
+
+`pf detect export` runs the same frames through PyTorch and through ONNX Runtime and
+compares the raw tensors *and* the decoded boxes. Measured: every output agrees to within
+2.4e-06 relative, and the decoded boxes are identical to 0.0000 px.
+
+Tolerance is relative per output rather than one absolute number. The heatmap and offset
+live in [0, 1] while the size head emits pixels running to a couple of hundred, so a single
+absolute threshold called a 1.5-parts-per-million size difference a mismatch while the
+boxes were identical.
+
+### C++ and Python agree on real pixels
+
+The two decoders are tested separately against hand-built tensors, so neither can drift
+into agreeing on something wrong. They are then checked against each other on real frames
+through the real model:
+
+| Frame | Python | C++ |
+|---|---|---|
+| scene_000 | car 0.767944 [973.5268, 394.0856, 1159.3485, 464.1636] | car 0.767944 [973.527, 394.086, 1159.35, 464.164] |
+| scene_001 | car 0.533868 [997.3109, 395.0065, 1164.7853, 463.1137] | car 0.533868 [997.311, 395.007, 1164.79, 463.114] |
+| scene_002 | van 0.698163, car 0.800522 | van 0.698163, car 0.800522 |
+
+Same count, same classes, scores equal to six decimals. That covers preprocessing
+(nearest-neighbour resize, channel order, normalisation), the decode, and the rescale back
+to frame coordinates.
+
+### Two defects this phase found
+
+**The renderer reports vehicles the camera cannot see.** `Scene.detections()` returns a box
+for every vehicle on the kerb, and the kerb is far longer than the field of view: at the
+default 18 m mount only about 13 m of a 40 m kerb is in frame. Four of six boxes in the
+first validation scene sat outside the image. The dataset builder now sizes the kerb to the
+visible span and clips what remains.
+
+**An unrecognised object used to free the space it was standing in.**
+`occupies_parking_space` returned false for `Unknown`, and `vehicle_class_from` did not know
+"compact" or "estate", both of which the renderer emits. Nothing called that helper yet, so
+no published measurement was wrong, but it was one wiring-up away from being a false-free
+source. Unknown now blocks; only a bicycle does not.
+
+### Known limitation
+
+The kerb occupies the right half of every rendered frame, because the generator places
+vehicles from the camera's own x origin rightward and that origin projects to the image
+centre. The model is therefore never shown a kerb on the left. Fixing it means changing the
+scene generator the passing evaluation harness depends on, so it is recorded here rather
+than done quietly.
+
+## P8: Web PWA `[x]`
 
 - [x] Vite + TypeScript + MapLibre GL, no framework runtime
 - [x] Vehicle manager, destination search with debounced suggestions, ranked results
@@ -140,7 +204,7 @@ because it placed the cars. Real footage cannot tell you that without a survey t
 - [x] Service worker, web manifest, installable, offline shell
 - [x] Basemap dimmed via `raster-brightness-max` so route lines stay legible
 
-## P9, Tests + `pf evaluate` metric table `[x]`
+## P9: Tests + `pf evaluate` metric table `[x]`
 
 - [x] **101 C++ tests**, `test_geo` 15, `test_fit` 20, `test_rank` 19, `test_index` 10,
       `test_vision` 37
@@ -162,7 +226,7 @@ because it placed the cars. Real footage cannot tell you that without a survey t
 Over 60 scenes, 4,000 frame samples, 3,000 fit trials and 12 search runs. Gap MAE holds
 at 0.001 m across all six lighting conditions including night, rain and glare.
 
-## P10, Docs, ops, delivery `[x]`
+## P10: Docs, ops, delivery `[x]`
 
 - [x] `README.md`, one-command Windows quickstart
 - [x] `docs/architecture/overview.md`, subsystem map and the C++/Python boundary

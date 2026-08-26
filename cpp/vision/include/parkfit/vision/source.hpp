@@ -168,6 +168,79 @@ class FfmpegSource final : public FrameSource {
 
 /// Replays frames supplied in memory. Used by the deterministic replay tests, and by
 /// the synthetic evaluation harness, so accuracy numbers are reproducible.
+/// Read a binary PPM (P6) into a frame.
+///
+/// PPM because the synthetic renderer writes it and because it needs no library: a
+/// three-line header and raw RGB bytes. The worker gains the ability to replay real
+/// rendered imagery through a real model without taking on an image-codec dependency for
+/// a format used only by the test fixtures.
+///
+/// Returns an empty frame when the file is missing or is not a P6.
+inline Frame load_ppm(const std::string& path) {
+    std::FILE* file = std::fopen(path.c_str(), "rb");
+    if (file == nullptr) return {};
+
+    auto next_token = [&](long& value) {
+        int c = 0;
+        // Skip whitespace and '#' comments, which the format allows between any fields.
+        do {
+            c = std::fgetc(file);
+            if (c == '#') {
+                while (c != '\n' && c != EOF) c = std::fgetc(file);
+            }
+        } while (c == ' ' || c == '\n' || c == '\r' || c == '\t' || c == '#');
+        if (c == EOF) return false;
+
+        value = 0;
+        bool any = false;
+        while (c >= '0' && c <= '9') {
+            value = value * 10 + (c - '0');
+            any = true;
+            c = std::fgetc(file);
+        }
+        return any;
+    };
+
+    char magic[3] = {0, 0, 0};
+    if (std::fread(magic, 1, 2, file) != 2 || magic[0] != 'P' || magic[1] != '6') {
+        std::fclose(file);
+        return {};
+    }
+
+    long width = 0;
+    long height = 0;
+    long maxval = 0;
+    if (!next_token(width) || !next_token(height) || !next_token(maxval) || width <= 0 ||
+        height <= 0 || maxval != 255) {
+        std::fclose(file);
+        return {};
+    }
+
+    Frame frame(static_cast<int>(width), static_cast<int>(height), PixelFormat::Rgb24);
+    const std::size_t expected = static_cast<std::size_t>(width) * height * 3;
+    const std::size_t read = std::fread(frame.data(), 1, expected, file);
+    std::fclose(file);
+    if (read != expected) return {};
+    return frame;
+}
+
+/// Load ``prefix000.ppm``, ``prefix001.ppm`` and so on until one is missing.
+///
+/// Stopping at the first gap rather than scanning a directory keeps the order defined by
+/// the filenames, which is what makes a replay reproducible.
+inline std::vector<Frame> load_ppm_sequence(const std::string& prefix, std::size_t limit = 0) {
+    std::vector<Frame> frames;
+    for (std::size_t i = 0;; ++i) {
+        char suffix[32];
+        std::snprintf(suffix, sizeof(suffix), "%03zu.ppm", i);
+        Frame frame = load_ppm(prefix + suffix);
+        if (frame.width() <= 0) break;
+        frames.push_back(std::move(frame));
+        if (limit && frames.size() >= limit) break;
+    }
+    return frames;
+}
+
 class ReplaySource final : public FrameSource {
   public:
     ReplaySource(SourceConfig config, std::vector<Frame> frames)

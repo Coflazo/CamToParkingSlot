@@ -38,9 +38,13 @@ cameras_app = typer.Typer(help="Manage the camera registry.", no_args_is_help=Tr
 predict_app = typer.Typer(
     help="Occupancy prediction: history, decay rates, learned model.", no_args_is_help=True
 )
+detect_app = typer.Typer(
+    help="The vehicle detector: dataset, training, ONNX export.", no_args_is_help=True
+)
 app.add_typer(ingest_app, name="ingest")
 app.add_typer(cameras_app, name="cameras")
 app.add_typer(predict_app, name="predict")
+app.add_typer(detect_app, name="detect")
 
 console = Console()
 
@@ -694,6 +698,110 @@ def predict_all(
         from_observations=False,
     )
     predict_train(source="synthetic-history", trees=400, threads=4, out="data/models/occupancy.lgb")
+
+
+@detect_app.command("dataset")
+def detect_dataset(
+    out: str = typer.Option("data/detector", help="Where to write the dataset."),
+    train: int = typer.Option(600, help="Training scenes."),
+    val: int = typer.Option(150, help="Validation scenes."),
+    seed: int = typer.Option(7),
+) -> None:
+    """Render scenes into a detection dataset with exact ground-truth boxes."""
+    import pathlib as _pathlib
+
+    from parkfit.ml.datasets import scenes as scene_dataset
+
+    report = scene_dataset.build(_pathlib.Path(out), train_scenes=train, val_scenes=val, seed=seed)
+    console.print(f"[green]{report.describe()}[/green]")
+    console.print(f"[dim]conditions: {report.per_condition}[/dim]")
+
+
+@detect_app.command("train")
+def detect_train(
+    dataset: str = typer.Option("data/detector", help="Dataset directory."),
+    epochs: int = typer.Option(26),
+    batch: int = typer.Option(8),
+    threads: int = typer.Option(4),
+    out: str = typer.Option("data/models/detector.pt"),
+) -> None:
+    """Train the vehicle detector and score it on held-out scenes."""
+    import pathlib as _pathlib
+
+    from parkfit.ml.train import detector as detector_train
+
+    _setup_logging(verbose=True)
+    report = detector_train.train(
+        _pathlib.Path(dataset),
+        epochs=epochs,
+        batch_size=batch,
+        threads=threads,
+        weights_path=_pathlib.Path(out),
+    )
+    if not report.trained:
+        console.print(f"[yellow]{report.describe()}[/yellow]")
+        raise typer.Exit(code=1)
+
+    console.print(f"[green]{report.describe()}[/green]")
+    table = Table(title="detection F1 by lighting condition")
+    table.add_column("condition")
+    table.add_column("F1", justify="right")
+    for condition, score in sorted(report.per_condition.items()):
+        table.add_row(condition, f"{score:.3f}")
+    console.print(table)
+
+
+@detect_app.command("export")
+def detect_export(
+    weights: str = typer.Option("data/models/detector.pt"),
+    out: str = typer.Option("data/models/detector.onnx"),
+    dataset: str = typer.Option("data/detector"),
+    frames: int = typer.Option(12, help="Frames to check PyTorch against ONNX Runtime."),
+) -> None:
+    """Export the detector to ONNX and verify the export against PyTorch."""
+    import pathlib as _pathlib
+
+    from parkfit.ml.export import onnx as onnx_export
+
+    report = onnx_export.export(
+        _pathlib.Path(weights),
+        _pathlib.Path(out),
+        dataset_root=_pathlib.Path(dataset),
+        verify_frames=frames,
+    )
+    if not report.exported:
+        console.print(f"[yellow]{report.describe()}[/yellow]")
+        raise typer.Exit(code=1)
+
+    colour = "green" if report.agrees else "red"
+    console.print(f"[{colour}]{report.describe()}[/{colour}]")
+    if not report.agrees:
+        # An export that does not reproduce the model is worse than no export: it looks
+        # like it works and shifts every box by an amount nobody measured.
+        raise typer.Exit(code=1)
+
+
+@detect_app.command("all")
+def detect_all(
+    epochs: int = typer.Option(26),
+    train: int = typer.Option(600),
+    val: int = typer.Option(150),
+) -> None:
+    """Build the dataset, train the detector, then export and verify it."""
+    detect_dataset(out="data/detector", train=train, val=val, seed=7)
+    detect_train(
+        dataset="data/detector",
+        epochs=epochs,
+        batch=8,
+        threads=4,
+        out="data/models/detector.pt",
+    )
+    detect_export(
+        weights="data/models/detector.pt",
+        out="data/models/detector.onnx",
+        dataset="data/detector",
+        frames=12,
+    )
 
 
 @app.command()

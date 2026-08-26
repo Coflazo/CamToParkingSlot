@@ -11,7 +11,7 @@ from and how old it is.
 
 ---
 
-## The promise, stated precisely
+## The promise: stated precisely
 
 This does **not** promise to always find you a free kerbside space. Nothing can: there is
 no nationwide network of kerb-facing Dutch camera feeds available for reuse, and any
@@ -52,7 +52,7 @@ there is nothing else to install.
 
 ---
 
-## What it measures, and what those numbers are
+## What it measures: and what those numbers are
 
 Run `uv run pf evaluate` to reproduce this table.
 

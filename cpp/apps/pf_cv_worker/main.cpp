@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "parkfit/vision/detector.hpp"
+#include "parkfit/vision/onnx_detector.hpp"
 #include "parkfit/vision/gap.hpp"
 #include "parkfit/vision/health.hpp"
 #include "parkfit/vision/homography.hpp"
@@ -44,6 +45,8 @@ struct Options {
     std::string calibration_path;
     std::string segment_path;
     std::string detections_path;
+    std::string onnx_path;
+    std::string onnx_library;
     std::string replay_prefix;
     std::string model_version{"none"};
     std::string output_path;
@@ -66,6 +69,10 @@ void print_usage() {
   --calibration FILE     JSON with image/world control point pairs
   --segment FILE         JSON kerb centreline in RD New metres
   --detections FILE      JSON detection sidecar (replay mode, no model needed)
+  --onnx FILE            ONNX detector to run; reads FILE.json beside it for the
+                         input size and class order
+  --onnx-library PATH    explicit ONNX Runtime shared library, if it is not on the
+                         search path
   --replay PREFIX        replay frames instead of opening a stream
   --model NAME           model version string recorded in every event
   --interval SECONDS     sampling interval, default 8
@@ -97,6 +104,8 @@ Options parse_args(int argc, char** argv) {
         else if (arg == "--detections") o.detections_path = value(i);
         else if (arg == "--replay") o.replay_prefix = value(i);
         else if (arg == "--model") o.model_version = value(i);
+        else if (arg == "--onnx") o.onnx_path = value(i);
+        else if (arg == "--onnx-library") o.onnx_library = value(i);
         else if (arg == "--out") o.output_path = value(i);
         else if (arg == "--interval") o.interval_s = std::stod(value(i));
         else if (arg == "--score") o.score_threshold = std::stod(value(i));
@@ -303,6 +312,8 @@ int main(int argc, char** argv) {
         if (!have_segment) std::cerr << "kerb segment unusable: " << error << "\n";
     }
 
+    std::string model_version = options.model_version;
+
     std::unique_ptr<Detector> detector;
     if (!options.detections_path.empty()) {
         bool ok = false;
@@ -314,12 +325,31 @@ int main(int argc, char** argv) {
             return 2;
         }
         detector = std::move(sidecar);
+    } else if (!options.onnx_path.empty()) {
+        auto onnx = std::make_unique<OnnxDetector>(options.onnx_path, options.onnx_library);
+        if (!onnx->info().available) {
+            // Asking for a model and silently getting a detector that sees nothing is how
+            // a worker runs for a week publishing UNKNOWN for a camera that was working
+            // perfectly. If a model was named, it has to load.
+            std::cerr << "onnx detector unavailable: " << onnx->info().detail << "\n";
+            std::cerr << "searched for the runtime in:";
+            for (const auto& path : OnnxDetector::default_library_candidates()) {
+                std::cerr << " " << path;
+            }
+            std::cerr << "\n";
+            return 2;
+        }
+        // Every published event records which model produced it. When the operator did
+        // not name one, take it from the model's own sidecar rather than shipping
+        // "none" alongside real detections.
+        if (model_version == "none") model_version = onnx->spec().model_version;
+        detector = std::move(onnx);
     } else {
         detector = std::make_unique<NullDetector>();
     }
 
     const DetectorInfo detector_info = detector->info();
-    if (!detector_info.available) {
+    if (!detector_info.available || options.verbose) {
         std::cerr << "detector: " << detector_info.backend << " - " << detector_info.detail
                   << "\n";
     }
@@ -334,11 +364,25 @@ int main(int argc, char** argv) {
 
     std::unique_ptr<FrameSource> source;
     if (replaying) {
-        // Replay drives the pipeline from the sidecar alone, which is what makes the
-        // accuracy tests reproducible: no camera, no model, no clock.
-        std::vector<Frame> frames;
+        // Two kinds of replay, and the difference matters.
+        //
+        // Real PPM frames at the prefix drive the *whole* pipeline, model included, which
+        // is the only way to check that the C++ preprocessing and decoding agree with the
+        // Python ones on actual pixels.
+        //
+        // No PPMs means the older fixture path: synthetic gradient frames counted off the
+        // detection sidecar. That keeps the geometry tests reproducible with no camera, no
+        // model and no clock, which is what makes gap error attributable to the geometry
+        // rather than to a detector.
+        std::vector<Frame> frames = load_ppm_sequence(
+            options.replay_prefix, static_cast<std::size_t>(std::max(0, options.max_frames)));
+
         const auto* sidecar = dynamic_cast<SidecarDetector*>(detector.get());
-        const std::size_t count = sidecar ? sidecar->frame_count() : 0;
+        const std::size_t count = frames.empty() ? (sidecar ? sidecar->frame_count() : 0) : 0;
+        if (!frames.empty() && options.verbose) {
+            std::cerr << "replay: " << frames.size() << " frames from " << options.replay_prefix
+                      << "*.ppm\n";
+        }
         for (std::size_t i = 0; i < count; ++i) {
             Frame f(options.width, options.height, PixelFormat::Gray8);
             // A benign gradient, so the health checker sees a plausible frame while the
@@ -399,6 +443,16 @@ int main(int argc, char** argv) {
             detections = detector->detect(sf.frame, options.score_threshold);
         }
 
+        if (options.verbose && !detections.empty()) {
+            // Boxes in frame coordinates, which is what makes this comparable against the
+            // Python decoder on the same file. The two implementations have to agree, and
+            // the only way to know they do is to be able to read both.
+            for (const auto& d : detections) {
+                std::cerr << "  det " << d.label << " score=" << d.score << " box=[" << d.x1
+                          << "," << d.y1 << "," << d.x2 << "," << d.y2 << "]\n";
+            }
+        }
+
         // The frame has served its purpose. Release it before anything else happens, so
         // imagery of a public street is resident for the shortest possible time.
         sf.frame.release();
@@ -416,7 +470,7 @@ int main(int argc, char** argv) {
         if (transition.publishable) {
             publisher->publish(make_bay_observation(
                 options.camera_id, have_segment ? segment.id : "bay_default", transition,
-                report.state, calibration_version, options.model_version, timestamp, 45.0));
+                report.state, calibration_version, model_version, timestamp, 45.0));
         }
 
         if (report.usable() && calibrated && have_segment) {
@@ -425,7 +479,7 @@ int main(int argc, char** argv) {
                 for (const auto& gap : gaps.gaps) {
                     publisher->publish(make_gap_observation(
                         options.camera_id, segment.id, gap, report.state, calibration_version,
-                        options.model_version, timestamp, 45.0));
+                        model_version, timestamp, 45.0));
                 }
                 if (options.verbose) {
                     std::cerr << "  gaps=" << gaps.gaps.size()

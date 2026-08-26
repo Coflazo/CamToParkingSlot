@@ -45,25 +45,47 @@ inline const char* to_string(VehicleClass c) {
     return "unknown";
 }
 
+/// Maps a detector label to a class.
+///
+/// Body styles are included alongside classes because the labels arriving here come from
+/// two places that name things differently: a detector trained on COCO says "car", and
+/// the synthetic renderer says "compact" or "estate". Before the body styles were listed
+/// both fell through to Unknown, which is the one answer that should never be reached by
+/// accident.
 inline VehicleClass vehicle_class_from(const std::string& label) {
     static const std::map<std::string, VehicleClass> table{
-        {"car", VehicleClass::Car},         {"van", VehicleClass::Van},
-        {"truck", VehicleClass::Truck},     {"bus", VehicleClass::Bus},
+        {"car", VehicleClass::Car},
+        {"compact", VehicleClass::Car},
+        {"estate", VehicleClass::Car},
+        {"sedan", VehicleClass::Car},
+        {"hatchback", VehicleClass::Car},
+        {"suv", VehicleClass::Car},
+        {"van", VehicleClass::Van},
+        {"truck", VehicleClass::Truck},
+        {"lorry", VehicleClass::Truck},
+        {"bus", VehicleClass::Bus},
+        {"coach", VehicleClass::Bus},
         {"motorcycle", VehicleClass::Motorcycle},
         {"motorbike", VehicleClass::Motorcycle},
-        {"bicycle", VehicleClass::Bicycle}, {"trailer", VehicleClass::Trailer},
+        {"scooter", VehicleClass::Motorcycle},
+        {"bicycle", VehicleClass::Bicycle},
+        {"bike", VehicleClass::Bicycle},
+        {"trailer", VehicleClass::Trailer},
+        {"caravan", VehicleClass::Trailer},
     };
     const auto it = table.find(label);
     return it == table.end() ? VehicleClass::Unknown : it->second;
 }
 
-/// Classes that occupy a parking space. A bicycle does not, and counting one as a
-/// blockage would delete real parking supply from the map.
-inline bool occupies_parking_space(VehicleClass c) {
-    return c == VehicleClass::Car || c == VehicleClass::Van || c == VehicleClass::Truck ||
-           c == VehicleClass::Bus || c == VehicleClass::Motorcycle ||
-           c == VehicleClass::Trailer;
-}
+/// Classes that occupy a parking space.
+///
+/// A bicycle does not, and counting one as a blockage would delete real parking supply
+/// from the map. Everything else does, **including Unknown**, and that asymmetry is
+/// deliberate. The two ways to be wrong here are not equal: calling an unidentified
+/// object "not a vehicle" reports the space it is standing in as free, and a driver sent
+/// to an occupied space is the failure this subsystem is built to avoid. Calling it a
+/// vehicle costs that driver one option out of several.
+inline bool occupies_parking_space(VehicleClass c) { return c != VehicleClass::Bicycle; }
 
 struct DetectorInfo {
     std::string backend;
