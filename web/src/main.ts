@@ -13,6 +13,7 @@ import type { GeocodeResult, Recommendation, SearchResponse, Vehicle } from "./a
 import { ParkingMap, escapeHtml } from "./map";
 import * as navigate from "./navigate";
 import * as fitdiagram from "./fitdiagram";
+import Lenis from "lenis";
 
 const el = <T extends HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -161,7 +162,9 @@ async function runSearch(): Promise<void> {
   if (destination.length < 2) return;
 
   searchButton.disabled = true;
-  searchButton.textContent = "Searching…";
+  // The button holds a label span and an arrow. Writing textContent would erase
+  // both and leave a bare word where the control used to be.
+  setButtonLabel("Searching");
   setStatus("Looking for parking…");
   closeStream?.();
   closeStream = null;
@@ -189,13 +192,31 @@ async function runSearch(): Promise<void> {
     resultsBox.innerHTML = "";
   } finally {
     searchButton.disabled = false;
-    searchButton.textContent = "Find parking";
+    setButtonLabel("Find parking");
   }
+}
+
+function setButtonLabel(text: string): void {
+  const label = searchButton.querySelector(".button-label");
+  if (label) label.textContent = text;
+  else searchButton.textContent = text;
+}
+
+/**
+ * Switch the page between its opening statement and its working state.
+ *
+ * Driven by a data attribute rather than by adding and removing classes, so the whole
+ * transition lives in CSS and there is one place to look when it misbehaves.
+ */
+function setView(view: "intro" | "results"): void {
+  const app = document.getElementById("app");
+  if (app && app.dataset["view"] !== view) app.dataset["view"] = view;
 }
 
 function renderSearch(response: SearchResponse): void {
   currentResults = response.results;
   selectedId = null;
+  setView(response.results.length > 0 ? "results" : "intro");
 
   if (!response.destination) {
     setStatus(response.warnings[0] ?? "Could not locate that destination.", "error");
@@ -404,6 +425,38 @@ vehicleButton.addEventListener("click", () => {
   vehicleDialog.showModal();
 });
 
+/**
+ * Weighted scroll.
+ *
+ * Default browser scroll is a step function: it treats every pixel of the page as
+ * equally important and stops dead. Lenis gives it inertia, which is the difference
+ * between reading a list and moving through one.
+ *
+ * Disabled outright when the visitor has asked for reduced motion. Scroll is the one
+ * interaction nobody can opt out of, so hijacking its feel is exactly the case that
+ * setting exists for.
+ */
+function startSmoothScroll(): void {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  const lenis = new Lenis({
+    duration: 1.05,
+    // Expo-out. The same curve the rest of the interface uses, so a scroll and a
+    // panel reveal decelerate alike.
+    easing: (t: number) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+    // Touch devices already have momentum from the platform, and layering another
+    // model on top produces a floaty, unplaceable feel.
+    smoothWheel: true,
+    syncTouch: false,
+  });
+
+  const frame = (time: number) => {
+    lenis.raf(time);
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}
+
 async function loadVehicles(): Promise<void> {
   vehicleSelect.innerHTML = `<option value="">Not specified</option>`;
   if (!getToken()) return;
@@ -584,6 +637,7 @@ navigator.geolocation?.getCurrentPosition(
   { timeout: 5000, maximumAge: 300000 },
 );
 
+startSmoothScroll();
 void refreshHealth();
 void loadVehicles();
 window.setInterval(() => void refreshHealth(), 60000);

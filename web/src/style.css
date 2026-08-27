@@ -11,18 +11,27 @@
 :root {
   color-scheme: dark;
 
-  --bg: #0d1117;
-  --bg-raised: #151b23;
-  --bg-sunken: #0a0e14;
-  --border: #232b36;
-  --border-strong: #313c4a;
+  /* Asphalt at night, not a generic dark theme. Every value is off-neutral: pure
+     #000 and #fff read as digital, while a blue-shifted ink and a warm paint white
+     read as materials. The reference is a Dutch street after dark, which is where
+     this is used. */
+  --bg: #0a0c10;
+  --bg-raised: #12161e;
+  --bg-sunken: #070910;
+  --border: #1d222c;
+  --border-strong: #2b323e;
 
-  --text: #e6edf3;
-  --text-muted: #9aa7b4;
-  --text-faint: #6b7887;
+  /* Road-marking white, very slightly warm. */
+  --text: #f4f2ed;
+  --text-muted: #97a0ae;
+  --text-faint: #626c7a;
 
-  --accent: #4c9aff;
-  --accent-strong: #2f7de0;
+  /* One signal colour, used only for the primary action, the accent word and a live
+     link. Deliberately clear of the fit hues below: a colour that means "act" must
+     never be mistaken for a colour that means "this fits". */
+  --accent: #5b6cff;
+  --accent-strong: #4453f5;
+  --accent-glow: rgb(91 108 255 / 22%);
 
   /* Fit verdicts. Green means checked and clear; amber means checked and tight;
      grey means we could not check, which is not the same as either. */
@@ -110,7 +119,17 @@ body {
 #app {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  min-height: 100%;
+}
+
+/* A trace of noise over everything. Fixed, so it never scrolls and never repaints. */
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.028;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 /* ---------------------------------------------------------------- topbar */
@@ -492,20 +511,9 @@ button:focus-visible {
 }
 
 /* ---------------------------------------------------------------- legend */
-.legend {
-  position: absolute;
-  left: 12px;
-  bottom: 12px;
-  display: flex;
-  gap: 14px;
-  padding: 8px 12px;
-  background: color-mix(in srgb, var(--bg-raised) 92%, transparent);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  color: var(--text-muted);
-  backdrop-filter: blur(6px);
-}
+/* Positioning lives with the composition rules further down. This block used to
+   set `left: 12px` as well, and since the newer rule only sets `right`, nothing
+   cleared the left edge and the legend stretched into a bar across the viewport. */
 
 .legend-item {
   display: flex;
@@ -1124,5 +1132,719 @@ button:focus-visible {
 @media (max-width: 30rem) {
   .fit-panel {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ===========================================================================
+   COMPOSITION
+   ===========================================================================
+   The old layout was a fixed panel beside a fixed map: two columns, equal
+   weight, no tension anywhere. This is a full-bleed map with a single offset
+   rail of content floating over it. The asymmetry is the point. The rail sits
+   near the left eighth and stops well short of the right edge, so the city is
+   always visible getting on with its own business behind the answer.
+=========================================================================== */
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.1rem clamp(1rem, 3.2vw, 2.75rem);
+  background: linear-gradient(180deg, var(--bg) 38%, rgb(10 12 16 / 0%));
+}
+
+.mark {
+  display: flex;
+  align-items: center;
+  gap: 0.62rem;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.mark-glyph svg {
+  display: block;
+  width: 1.35rem;
+  height: 1.35rem;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.mark-word {
+  font-size: var(--step-0);
+  font-weight: 600;
+  /* Tightened, so a four-part compound name reads as one mark. */
+  letter-spacing: -0.035em;
+}
+
+.nav-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Full bleed, behind everything, edge to edge. */
+.stage-map {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+
+.stage-map #map {
+  position: absolute;
+  inset: 0;
+}
+
+/* Before a search the map is atmosphere rather than information, so it is pushed
+   back. A directional wash rather than a flat scrim: the left side, where the
+   words are, goes almost solid, and the right stays open. */
+.stage-map::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(96deg, var(--bg) 30%, rgb(10 12 16 / 72%) 56%, rgb(10 12 16 / 30%));
+  transition: background 0.9s var(--ease-out);
+}
+
+/* Once there are results the map is doing real work, so it gets out of the way. */
+#app[data-view="results"] .stage-map::after {
+  background: linear-gradient(96deg, var(--bg) 10%, rgb(10 12 16 / 58%) 32%, rgb(10 12 16 / 0%) 60%);
+}
+
+/* The offset rail. Starts near the left eighth, holds a readable measure, and
+   stops far short of the right edge. */
+.stage-rail {
+  position: relative;
+  z-index: 10;
+  width: min(37rem, 92vw);
+  margin-left: clamp(1rem, 6vw, 5.5rem);
+  padding-bottom: 6rem;
+}
+
+/* --------------------------------------------------------------- the intro */
+.intro {
+  padding: clamp(0.75rem, 2.5vh, 2rem) 0 clamp(1rem, 2.5vh, 1.75rem);
+  transition:
+    opacity 0.6s var(--ease-out),
+    transform 0.7s var(--ease-out),
+    max-height 0.8s var(--ease-in-out),
+    padding 0.6s var(--ease-out);
+}
+
+/* It collapses rather than vanishing, so the console slides up into its place
+   instead of the page jumping under the cursor. */
+#app[data-view="results"] .intro {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  opacity: 0;
+  transform: translateY(-14px);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.intro-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 0 0.95rem;
+  color: var(--text-faint);
+  font-size: var(--step--1);
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.intro-rule {
+  flex: 0 0 3.5rem;
+  height: 1px;
+  background: var(--border-strong);
+}
+
+/* The gasping moment. Viewport-scaled display against 15px body is roughly an 8:1
+   step at the small end and 11:1 at the large one. Negative tracking pulls each
+   line into a single mark rather than three separate words. */
+.intro-title {
+  margin: 0 0 1.15rem;
+  /* Sized against viewport height as well as width. On a short laptop screen a
+     pure vw scale pushes the search field off the bottom, and a headline that
+     hides the tool is a failed headline however large it is.
+
+     The ceiling is 9.5rem against a 15px body, a ratio of about 10:1. Below that
+     the headline is merely large; at it, the page has a clear first and second
+     voice and reads as hierarchy even out of focus. The vh term is what keeps
+     the promise: on a short screen the ratio yields before the tool does. */
+  font-size: clamp(2.6rem, min(9.2vw, 13vh), 9.5rem);
+  font-weight: 700;
+  letter-spacing: -0.052em;
+  line-height: 0.9;
+}
+
+.intro-title .line {
+  display: block;
+  /* Each line clips its own words, so they rise from behind an edge rather than
+     fading in as a block. */
+  overflow: hidden;
+}
+
+.intro-title .word {
+  display: inline-block;
+  transform: translateY(102%);
+  animation: word-rise 1s var(--ease-out) forwards;
+}
+
+.intro-title .line:nth-child(1) .word:nth-child(1) {
+  animation-delay: 0.16s;
+}
+
+.intro-title .line:nth-child(1) .word:nth-child(2) {
+  animation-delay: 0.22s;
+}
+
+.intro-title .line:nth-child(2) .word:nth-child(1) {
+  animation-delay: 0.3s;
+}
+
+.intro-title .line:nth-child(2) .word:nth-child(2) {
+  animation-delay: 0.36s;
+}
+
+.intro-title .line:nth-child(3) .word:nth-child(1) {
+  animation-delay: 0.46s;
+}
+
+@keyframes word-rise {
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* One accent word on the whole page. It carries the claim, so it gets the colour. */
+.intro-title .is-accent {
+  color: var(--accent);
+}
+
+.intro-lead {
+  max-width: 34ch;
+  margin: 0 0 1.5rem;
+  color: var(--text-muted);
+  font-size: var(--step-1);
+  line-height: 1.55;
+  opacity: 0;
+  animation: rise-in 0.9s var(--ease-out) 0.56s forwards;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Figures rather than marketing. Every number here is measured, and each appears
+   in the README beside the run that produced it. */
+.intro-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  gap: 0.9rem 1.25rem;
+  margin: 0;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--border);
+  opacity: 0;
+  animation: rise-in 0.9s var(--ease-out) 0.68s forwards;
+}
+
+.intro-figures dt {
+  margin-bottom: 0.3rem;
+  color: var(--text-faint);
+  font-size: var(--step--1);
+  letter-spacing: 0.04em;
+}
+
+.intro-figures dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--step-1);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+}
+
+.intro-figures dd span {
+  margin-left: 0.1em;
+  color: var(--text-faint);
+  font-size: var(--step--1);
+  letter-spacing: 0;
+}
+
+/* -------------------------------------------------------------- the console */
+.console {
+  position: relative;
+  z-index: 20;
+  padding: 1.35rem 1.4rem 1.15rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  background: rgb(18 22 30 / 88%);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 24px 60px rgb(0 0 0 / 42%);
+  opacity: 0;
+  animation: rise-in 0.9s var(--ease-out) 0.78s forwards;
+}
+
+/* Once results exist the console stays put while they scroll under it, so the
+   search you just ran is never off screen when you want to change it. */
+#app[data-view="results"] .console {
+  position: sticky;
+  top: 4.2rem;
+  animation: none;
+  opacity: 1;
+}
+
+.field-primary {
+  display: block;
+  position: relative;
+  margin-bottom: 0.95rem;
+}
+
+.field-shell {
+  display: flex;
+  gap: 0.55rem;
+  align-items: stretch;
+  margin-top: 0.42rem;
+}
+
+.field-shell input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.72rem 0.85rem;
+  font-size: var(--step-1);
+  letter-spacing: -0.015em;
+}
+
+.button-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding-inline: 1.05rem;
+  background: var(--accent);
+  color: #060812;
+  font-weight: 650;
+  letter-spacing: -0.012em;
+  white-space: nowrap;
+  transition:
+    box-shadow 0.34s var(--ease-out),
+    transform 0.34s var(--ease-out);
+}
+
+.button-primary:hover:not(:disabled) {
+  background: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-glow);
+  transform: translateY(-1px);
+}
+
+.button-arrow svg {
+  display: block;
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.34s var(--ease-out);
+}
+
+.button-primary:hover:not(:disabled) .button-arrow svg {
+  transform: translateX(3px);
+}
+
+/* --------------------------------------------------------------- results */
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-top: 1.1rem;
+}
+
+.status {
+  margin-top: 0.9rem;
+  color: var(--text-muted);
+  font-size: var(--step--1);
+  line-height: 1.55;
+}
+
+.result {
+  padding: 1.05rem 1.15rem 1.15rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgb(18 22 30 / 90%);
+  backdrop-filter: blur(12px);
+  cursor: pointer;
+  transition:
+    border-color 0.34s var(--ease-out),
+    transform 0.34s var(--ease-out),
+    box-shadow 0.34s var(--ease-out);
+}
+
+.result:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+  box-shadow: 0 18px 40px rgb(0 0 0 / 34%);
+}
+
+.result.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 18px 44px rgb(0 0 0 / 42%);
+}
+
+#app[data-view="intro"] .legend {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.legend {
+  position: fixed;
+  transition: opacity 0.5s var(--ease-out);
+  right: clamp(1rem, 3vw, 2.25rem);
+  bottom: clamp(1rem, 3vw, 2.25rem);
+  z-index: 12;
+  display: flex;
+  gap: 1rem;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgb(10 12 16 / 82%);
+  backdrop-filter: blur(10px);
+  font-size: var(--step--1);
+  color: var(--text-muted);
+}
+
+@media (max-width: 60rem) {
+  .stage-rail {
+    width: auto;
+    margin-inline: 1rem;
+  }
+
+  .stage-map::after,
+  #app[data-view="results"] .stage-map::after {
+    background: linear-gradient(180deg, rgb(10 12 16 / 90%) 34%, rgb(10 12 16 / 58%));
+  }
+}
+
+/* ===========================================================================
+   RESPONSIVE
+   ===========================================================================
+   Conceived desktop-first and corrected against real viewports rather than
+   assumed ones. Every rule below fixes something a browser at that width
+   actually did: a 320 px screen overflowed by 139 px because the nav status
+   pill and the Vehicles button will not sit side by side, and the search field
+   collapsed to 50 px because it was sharing a row with the submit button.
+
+   Tested at 320, 390, 412, 768, 1024, 1440, 1920 and 2560 wide, plus landscape
+   phones, which are the case a height-blind hero always breaks.
+=========================================================================== */
+
+/* Very large screens. Without a cap the rail keeps growing and the measure runs
+   past 75 characters, which is where reading speed falls off. */
+@media (min-width: 100rem) {
+  .stage-rail {
+    width: min(40rem, 46vw);
+    margin-left: clamp(3rem, 9vw, 11rem);
+  }
+}
+
+/* Tablets and small laptops. The rail stops floating and takes the full width,
+   because a narrow column over a busy map is harder to read than a wide one. */
+@media (max-width: 60rem) {
+  .intro-title {
+    font-size: clamp(2.6rem, min(9vw, 10vh), 4.4rem);
+  }
+
+  .console {
+    backdrop-filter: blur(18px);
+  }
+}
+
+/* Large phones and small tablets. */
+@media (max-width: 48rem) {
+  .nav {
+    padding-inline: 1rem;
+  }
+
+  .intro-lead {
+    max-width: none;
+    font-size: var(--step-0);
+  }
+
+  .intro-figures {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* The fit diagram stacks under its headline instead of beside it: at this width
+     a two-column split leaves the drawing too small to read a dimension from. */
+  .fit-panel {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.85rem;
+  }
+
+  .fit-unit {
+    max-width: none;
+  }
+}
+
+/* Phones. The two side-by-side layouts that overflowed both stack here. */
+@media (max-width: 34rem) {
+  .stage-rail {
+    width: auto;
+    margin-inline: 0.75rem;
+    padding-bottom: 3rem;
+  }
+
+  /* The status pill and the Vehicles button together are 281 px, which does not
+     fit a 320 px screen at any padding. The pill is ambient information and the
+     button is a control, so the pill goes. */
+  .nav-meta .pill {
+    display: none;
+  }
+
+  /* Input and submit stop sharing a row. Side by side, a translated or long
+     button label squeezes the field to nothing. */
+  .field-shell {
+    flex-direction: column;
+  }
+
+  .field-shell input {
+    font-size: 16px; /* iOS zooms the page for anything smaller on focus. */
+  }
+
+  .button-primary {
+    justify-content: center;
+    padding-block: 0.75rem;
+  }
+
+  .field-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.6rem;
+  }
+
+  /* Vehicle is the field that changes the answer, so it gets the full width
+     rather than being squeezed into a half column. */
+  .field-row .field:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .toggles {
+    gap: 0.55rem 0.9rem;
+  }
+
+  .intro-eyebrow {
+    letter-spacing: 0.16em;
+  }
+
+  .result {
+    padding: 0.9rem 0.95rem 1rem;
+  }
+
+  /* The handoff sheet becomes a true bottom sheet: full width, square top
+     corners against the edge, thumb-reachable. */
+  .nav-sheet {
+    padding: 0;
+    place-items: end stretch;
+  }
+
+  .nav-panel {
+    width: 100%;
+    border-radius: 18px 18px 0 0;
+    border-bottom: none;
+    padding: 1.25rem 1.1rem calc(1rem + env(safe-area-inset-bottom));
+  }
+
+  .nav-coords {
+    gap: 0.2rem 1rem;
+  }
+
+  .legend {
+    display: none;
+  }
+}
+
+/* Very small phones, and the narrow end of foldables. */
+@media (max-width: 22.5rem) {
+  .intro-title {
+    font-size: clamp(2.05rem, 11vw, 2.6rem);
+  }
+
+  .intro-figures {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.7rem;
+  }
+
+  .mark-word {
+    /* The mark keeps its glyph; the wordmark is the part that can go. */
+    display: none;
+  }
+
+  .field-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Landscape phones. A hero scaled only by width fills a 400 px-tall viewport
+   completely and puts the search field off the bottom, which is the exact
+   failure this whole section exists to prevent. */
+@media (max-height: 30rem) and (orientation: landscape) {
+  .intro {
+    padding-block: 0.5rem;
+  }
+
+  .intro-title {
+    font-size: clamp(1.75rem, 5.5vh, 2.4rem);
+    margin-bottom: 0.6rem;
+  }
+
+  .intro-lead,
+  .intro-figures {
+    display: none;
+  }
+
+  .intro-eyebrow {
+    margin-bottom: 0.5rem;
+  }
+
+  #app[data-view="results"] .console {
+    top: 0.5rem;
+  }
+}
+
+/* Coarse pointers. Hover states are meaningless on a touchscreen and the
+   lift-on-hover transform sticks after a tap, so it is removed rather than
+   left to misfire. */
+@media (hover: none) {
+  .result:hover {
+    transform: none;
+    box-shadow: none;
+  }
+
+  .take-me:hover:not(:disabled) {
+    transform: none;
+  }
+
+  .button-primary:hover:not(:disabled) {
+    transform: none;
+  }
+
+  /* Every control clears the 44 px target the platforms ask for. */
+  .toggle,
+  .button,
+  .take-me,
+  .nav-app {
+    min-height: 44px;
+  }
+}
+
+/* Printing a result is a real thing to do before driving somewhere unfamiliar.
+   The map, the console and the chrome are all noise on paper. */
+@media print {
+  .grain,
+  .stage-map,
+  .nav-meta,
+  .console,
+  .take-me,
+  .legend {
+    display: none !important;
+  }
+
+  .stage-rail {
+    width: auto;
+    margin: 0;
+  }
+
+  .result {
+    border-color: #999;
+    background: none;
+    break-inside: avoid;
+    backdrop-filter: none;
+  }
+}
+
+/* Short screens, whatever the orientation. A 320x568 phone cannot hold the eyebrow,
+   a three-line headline, a lead paragraph, four figures and the whole console at
+   once, and the part that has to survive is the console. The headline keeps its
+   job of saying what this is; the supporting copy is what goes. */
+@media (max-width: 34rem) and (max-height: 44rem) {
+  .intro {
+    padding-block: 0.4rem 0.75rem;
+  }
+
+  .intro-lead,
+  .intro-figures {
+    display: none;
+  }
+
+  .intro-title {
+    font-size: clamp(1.9rem, 9.5vw, 2.4rem);
+    margin-bottom: 0.75rem;
+  }
+
+  .field-hint {
+    display: none;
+  }
+
+  .console {
+    padding: 1rem 1rem 0.85rem;
+  }
+}
+
+/* MapLibre puts its controls top-right by default, directly under the Vehicles
+   button. Moved down clear of the nav, and dropped entirely on touch, where
+   pinch-zoom is the gesture people actually use. */
+.maplibregl-ctrl-top-right {
+  top: 4.6rem !important;
+  right: 0.75rem !important;
+  z-index: 11;
+}
+
+.maplibregl-ctrl-group {
+  border: 1px solid var(--border) !important;
+  background: rgb(10 12 16 / 88%) !important;
+  backdrop-filter: blur(10px);
+}
+
+.maplibregl-ctrl-group button {
+  background: transparent !important;
+}
+
+.maplibregl-ctrl-group button + button {
+  border-top: 1px solid var(--border) !important;
+}
+
+/* The attribution is a licence requirement, so it stays; it just stops shouting. */
+.maplibregl-ctrl-attrib {
+  background: rgb(10 12 16 / 74%) !important;
+  font-size: 10px;
+}
+
+.maplibregl-ctrl-attrib a {
+  color: var(--text-faint) !important;
+}
+
+@media (hover: none), (max-width: 48rem) {
+  .maplibregl-ctrl-top-right {
+    display: none;
   }
 }
