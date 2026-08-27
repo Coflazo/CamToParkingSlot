@@ -68,6 +68,11 @@ async function refreshHealth(): Promise<void> {
 // ------------------------------------------------------------ suggestions
 let suggestTimer: number | undefined;
 let activeSuggestion = -1;
+// Bumped every time the list is dismissed. A geocode reply that comes back carrying an
+// older number has been overtaken, usually by the user hitting Enter while the debounced
+// request was still out, and putting its results on screen would reopen a dropdown over
+// the results the user just asked for.
+let suggestGeneration = 0;
 
 destinationInput.addEventListener("input", () => {
   window.clearTimeout(suggestTimer);
@@ -112,8 +117,10 @@ destinationInput.addEventListener("blur", () => {
 });
 
 async function loadSuggestions(query: string): Promise<void> {
+  const generation = suggestGeneration;
   try {
     const { results } = await api.geocode(query, 6);
+    if (generation !== suggestGeneration) return;
     if (results.length === 0) {
       hideSuggestions();
       return;
@@ -125,7 +132,7 @@ async function loadSuggestions(query: string): Promise<void> {
     }
     suggestionList.hidden = false;
   } catch {
-    hideSuggestions();
+    if (generation === suggestGeneration) hideSuggestions();
   }
 }
 
@@ -145,6 +152,8 @@ function suggestionItem(result: GeocodeResult): HTMLLIElement {
 }
 
 function hideSuggestions(): void {
+  window.clearTimeout(suggestTimer);
+  suggestGeneration += 1;
   suggestionList.hidden = true;
   suggestionList.innerHTML = "";
   activeSuggestion = -1;

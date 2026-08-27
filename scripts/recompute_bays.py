@@ -19,7 +19,7 @@ from collections import Counter
 from sqlalchemy import select
 
 from parkfit.geo.shapes import measure_bay
-from parkfit.ingest.amsterdam import ORIENTATION_BY_TYPE, infer_orientation
+from parkfit.ingest.amsterdam import infer_orientation
 from parkfit.storage.models import BayOrientation, ParkingBay
 from parkfit.storage.session import session_scope
 
@@ -38,11 +38,7 @@ def recompute(reinfer_orientation: bool = True) -> dict[str, int]:
 
         for offset in range(0, len(total), BATCH):
             ids = total[offset : offset + BATCH]
-            rows = (
-                session.execute(select(ParkingBay).where(ParkingBay.id.in_(ids)))
-                .scalars()
-                .all()
-            )
+            rows = session.execute(select(ParkingBay).where(ParkingBay.id.in_(ids))).scalars().all()
             for bay in rows:
                 try:
                     ring = json.loads(bay.geometry_rd_json)
@@ -54,8 +50,9 @@ def recompute(reinfer_orientation: bool = True) -> dict[str, int]:
                     continue
 
                 measurement = measure_bay(ring)
-                changes.append((bay.length_cm - measurement.length_cm,
-                                bay.width_cm - measurement.width_cm))
+                changes.append(
+                    (bay.length_cm - measurement.length_cm, bay.width_cm - measurement.width_cm)
+                )
 
                 bay.length_cm = measurement.length_cm
                 bay.width_cm = measurement.width_cm

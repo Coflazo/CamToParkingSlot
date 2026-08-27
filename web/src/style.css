@@ -1,54 +1,63 @@
 /* CamToParkingSlot, interface styles.
  *
- * Dark by default. This is used in a car, often at night, and a white screen at
- * dusk is genuinely unpleasant to look at while driving somewhere.
+ * The palette comes from the brand mark and nothing else. The mark is four corner
+ * brackets, a viewfinder, in near-black on off-white. It has no colour, so this has
+ * no colour: paper, ink, and the space between them.
  *
- * The colour system carries meaning rather than decoration: fit verdicts and evidence
- * confidence each have a fixed hue, so a driver learns to read a result at a glance
- * without parsing the words every time.
+ * The one place colour survives is where it carries information. Fit verdicts and
+ * evidence freshness keep fixed hues, because a driver reads the verdict off the
+ * colour before reading the words, and taking that away would take away meaning
+ * rather than decoration.
  */
 
 :root {
-  color-scheme: dark;
+  color-scheme: light dark;
 
-  /* Asphalt at night, not a generic dark theme. Every value is off-neutral: pure
-     #000 and #fff read as digital, while a blue-shifted ink and a warm paint white
-     read as materials. The reference is a Dutch street after dark, which is where
-     this is used. */
-  --bg: #0a0c10;
-  --bg-raised: #12161e;
-  --bg-sunken: #070910;
-  --border: #1d222c;
-  --border-strong: #2b323e;
+  /* Paper and ink, straight off the logo. Neither is pure: #fff glares under a
+     windscreen and #000 reads as a hole rather than as printing. */
+  --paper: #faf9f7;
+  --ink: #0a0a0a;
 
-  /* Road-marking white, very slightly warm. */
-  --text: #f4f2ed;
-  --text-muted: #97a0ae;
-  --text-faint: #626c7a;
+  --bg: var(--paper);
+  --bg-raised: #ffffff;
+  --bg-sunken: #f1efeb;
+  --border: #e3e0da;
+  --border-strong: #c9c5bc;
 
-  /* One signal colour, used only for the primary action, the accent word and a live
-     link. Deliberately clear of the fit hues below: a colour that means "act" must
-     never be mistaken for a colour that means "this fits". */
-  --accent: #5b6cff;
-  --accent-strong: #4453f5;
-  --accent-glow: rgb(91 108 255 / 22%);
+  --text: var(--ink);
+  --text-muted: #5b5952;
+  --text-faint: #8d8a82;
 
-  /* Fit verdicts. Green means checked and clear; amber means checked and tight;
+  /* No brand accent hue exists, because the mark has none. The primary action is
+     ink filled on paper, which in a monochrome system is the loudest thing available
+     and needs no colour to be obvious. */
+  --accent: var(--ink);
+  --accent-strong: #000000;
+  --accent-glow: rgb(10 10 10 / 12%);
+  --on-accent: var(--paper);
+
+  /* Bare channels, for the translucent panels and the map scrim. Those need the
+     ground colour at partial alpha, which a hex token cannot give them. */
+  --bg-rgb: 250 249 247;
+  --raised-rgb: 255 255 255;
+  --ink-rgb: 10 10 10;
+
+  /* Fit verdicts. Green means checked and clear, amber means checked and tight,
      grey means we could not check, which is not the same as either. */
-  --fit-ok: #3fb950;
-  --fit-tight: #d29922;
-  --fit-unknown: #7d8a99;
-  --fit-no: #f85149;
+  --fit-ok: #1a7f37;
+  --fit-tight: #9a6700;
+  --fit-unknown: #6e7781;
+  --fit-no: #cf222e;
 
   /* Evidence freshness. */
-  --live: #3fb950;
-  --stale: #d29922;
-  --static: #7d8a99;
+  --live: #1a7f37;
+  --stale: #9a6700;
+  --static: #6e7781;
 
-  --radius: 10px;
-  --radius-sm: 6px;
-  --shadow: 0 4px 16px rgb(0 0 0 / 40%);
-  --shadow-lift: 0 24px 64px rgb(0 0 0 / 55%);
+  --radius: 4px;
+  --radius-sm: 4px;
+  --shadow: 0 1px 2px rgb(10 10 10 / 8%), 0 4px 16px rgb(10 10 10 / 6%);
+  --shadow-lift: 0 18px 48px rgb(10 10 10 / 14%);
 
   /* Space Grotesk for anything that carries meaning at a glance, and for numbers.
      Its figures are the reason it is here: a driver reads "7 min" and "EUR 9.00" far more
@@ -74,9 +83,48 @@
   --ease-in-out: cubic-bezier(0.87, 0, 0.13, 1);
 }
 
+/* Night. The app gets used in a car after dark, where a paper-white screen is
+   genuinely unpleasant and slow to read from. Same monochrome system, inverted:
+   ink becomes the ground and paper becomes the mark, exactly as the logo would
+   look reversed out. Verdict hues lift so they still pass on a dark surface. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d0d0c;
+    --bg-raised: #161615;
+    --bg-sunken: #080807;
+    --border: #262624;
+    --border-strong: #3a3a37;
+
+    --text: #f4f2ed;
+    --text-muted: #a3a099;
+    --text-faint: #6f6c65;
+
+    --accent: #f4f2ed;
+    --accent-strong: #ffffff;
+    --accent-glow: rgb(244 242 237 / 16%);
+    --on-accent: #0d0d0c;
+
+    --bg-rgb: 13 13 12;
+    --raised-rgb: 22 22 21;
+    --ink-rgb: 244 242 237;
+
+    --fit-ok: #3fb950;
+    --fit-tight: #d29922;
+    --fit-unknown: #8b949e;
+    --fit-no: #f85149;
+
+    --live: #3fb950;
+    --stale: #d29922;
+    --static: #8b949e;
+
+    --shadow: 0 4px 16px rgb(0 0 0 / 40%);
+    --shadow-lift: 0 24px 64px rgb(0 0 0 / 55%);
+  }
+}
+
 ::selection {
   background: var(--accent);
-  color: #06121f;
+  color: var(--on-accent);
 }
 
 /* Focus that is visible first and pretty second. A keyboard user in a hurry has to see
@@ -128,8 +176,16 @@ body {
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  opacity: 0.028;
+  opacity: 0.03;
+  mix-blend-mode: multiply;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@media (prefers-color-scheme: dark) {
+  .grain {
+    opacity: 0.05;
+    mix-blend-mode: screen;
+  }
 }
 
 /* ---------------------------------------------------------------- topbar */
@@ -725,7 +781,7 @@ button:focus-visible {
   padding: 0.6rem 0.85rem;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  background: linear-gradient(180deg, rgb(76 154 255 / 14%), rgb(76 154 255 / 6%));
+  background: linear-gradient(180deg, rgb(var(--ink-rgb) / 7%), rgb(var(--ink-rgb) / 3%));
   color: var(--text);
   font-family: var(--font);
   font-size: var(--step-0);
@@ -740,7 +796,7 @@ button:focus-visible {
 
 .take-me:hover:not(:disabled) {
   border-color: var(--accent);
-  background: linear-gradient(180deg, rgb(76 154 255 / 26%), rgb(76 154 255 / 10%));
+  background: linear-gradient(180deg, rgb(var(--ink-rgb) / 13%), rgb(var(--ink-rgb) / 6%));
   transform: translateY(-1px);
 }
 
@@ -1001,7 +1057,7 @@ button:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background:
-    radial-gradient(120% 140% at 12% 0%, rgb(76 154 255 / 7%), transparent 62%),
+    radial-gradient(120% 140% at 12% 0%, rgb(var(--ink-rgb) / 5%), transparent 62%),
     var(--bg-sunken);
 }
 
@@ -1084,7 +1140,7 @@ button:focus-visible {
 }
 
 .fd-car {
-  fill: rgb(76 154 255 / 26%);
+  fill: rgb(var(--ink-rgb) / 20%);
   stroke: var(--accent);
   stroke-width: 1.25;
 }
@@ -1092,8 +1148,8 @@ button:focus-visible {
 /* Mirrors sit under the body and overhang it, which is the entire reason bodywork
    and mirror span are tracked as separate numbers. */
 .fd-mirrors {
-  fill: rgb(76 154 255 / 10%);
-  stroke: rgb(76 154 255 / 40%);
+  fill: rgb(var(--ink-rgb) / 8%);
+  stroke: rgb(var(--ink-rgb) / 38%);
   stroke-width: 1;
   stroke-dasharray: 3 3;
 }
@@ -1153,7 +1209,7 @@ button:focus-visible {
   justify-content: space-between;
   gap: 1rem;
   padding: 1.1rem clamp(1rem, 3.2vw, 2.75rem);
-  background: linear-gradient(180deg, var(--bg) 38%, rgb(10 12 16 / 0%));
+  background: linear-gradient(180deg, var(--bg) 38%, rgb(var(--bg-rgb) / 0%));
 }
 
 .mark {
@@ -1174,9 +1230,11 @@ button:focus-visible {
   stroke-linecap: round;
 }
 
+/* The wordmark splits its weight the way the logo does: "CamTo" light, "ParkingSlot"
+   bold. One word, two weights, which is what makes it read as a mark and not a label. */
 .mark-word {
   font-size: var(--step-0);
-  font-weight: 600;
+  font-weight: 400;
   /* Tightened, so a four-part compound name reads as one mark. */
   letter-spacing: -0.035em;
 }
@@ -1203,6 +1261,13 @@ button:focus-visible {
 .stage-map #map {
   position: absolute;
   inset: 0;
+  filter: grayscale(1) contrast(0.9);
+}
+
+@media (prefers-color-scheme: dark) {
+  .stage-map #map {
+    filter: grayscale(1) brightness(0.62) contrast(1.05);
+  }
 }
 
 /* Before a search the map is atmosphere rather than information, so it is pushed
@@ -1213,13 +1278,13 @@ button:focus-visible {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(96deg, var(--bg) 30%, rgb(10 12 16 / 72%) 56%, rgb(10 12 16 / 30%));
+  background: linear-gradient(96deg, var(--bg) 18%, rgb(var(--bg-rgb) / 58%) 44%, rgb(var(--bg-rgb) / 8%));
   transition: background 0.9s var(--ease-out);
 }
 
 /* Once there are results the map is doing real work, so it gets out of the way. */
 #app[data-view="results"] .stage-map::after {
-  background: linear-gradient(96deg, var(--bg) 10%, rgb(10 12 16 / 58%) 32%, rgb(10 12 16 / 0%) 60%);
+  background: linear-gradient(96deg, var(--bg) 6%, rgb(var(--bg-rgb) / 44%) 26%, rgb(var(--bg-rgb) / 0%) 52%);
 }
 
 /* The offset rail. Starts near the left eighth, holds a readable measure, and
@@ -1399,7 +1464,7 @@ button:focus-visible {
   padding: 1.35rem 1.4rem 1.15rem;
   border: 1px solid var(--border-strong);
   border-radius: 16px;
-  background: rgb(18 22 30 / 88%);
+  background: rgb(var(--raised-rgb) / 88%);
   backdrop-filter: blur(14px);
   box-shadow: 0 24px 60px rgb(0 0 0 / 42%);
   opacity: 0;
@@ -1442,7 +1507,7 @@ button:focus-visible {
   gap: 0.55rem;
   padding-inline: 1.05rem;
   background: var(--accent);
-  color: #060812;
+  color: var(--on-accent);
   font-weight: 650;
   letter-spacing: -0.012em;
   white-space: nowrap;
@@ -1481,6 +1546,9 @@ button:focus-visible {
   margin-top: 1.1rem;
 }
 
+/* The status line sits directly on the map, and the map is busy. Without a ground of
+   its own the sentence that explains why 103 options disappeared is the least readable
+   text on the page, which is backwards. */
 .status {
   margin-top: 0.9rem;
   color: var(--text-muted);
@@ -1488,11 +1556,19 @@ button:focus-visible {
   line-height: 1.55;
 }
 
+.status:not(:empty) {
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgb(var(--raised-rgb) / 86%);
+  backdrop-filter: blur(10px);
+}
+
 .result {
   padding: 1.05rem 1.15rem 1.15rem;
   border: 1px solid var(--border);
   border-radius: 14px;
-  background: rgb(18 22 30 / 90%);
+  background: rgb(var(--raised-rgb) / 90%);
   backdrop-filter: blur(12px);
   cursor: pointer;
   transition:
@@ -1528,7 +1604,7 @@ button:focus-visible {
   padding: 0.6rem 0.9rem;
   border: 1px solid var(--border);
   border-radius: 999px;
-  background: rgb(10 12 16 / 82%);
+  background: rgb(var(--bg-rgb) / 82%);
   backdrop-filter: blur(10px);
   font-size: var(--step--1);
   color: var(--text-muted);
@@ -1542,7 +1618,7 @@ button:focus-visible {
 
   .stage-map::after,
   #app[data-view="results"] .stage-map::after {
-    background: linear-gradient(180deg, rgb(10 12 16 / 90%) 34%, rgb(10 12 16 / 58%));
+    background: linear-gradient(180deg, rgb(var(--bg-rgb) / 90%) 34%, rgb(var(--bg-rgb) / 58%));
   }
 }
 
@@ -1821,7 +1897,7 @@ button:focus-visible {
 
 .maplibregl-ctrl-group {
   border: 1px solid var(--border) !important;
-  background: rgb(10 12 16 / 88%) !important;
+  background: rgb(var(--bg-rgb) / 88%) !important;
   backdrop-filter: blur(10px);
 }
 
@@ -1835,7 +1911,7 @@ button:focus-visible {
 
 /* The attribution is a licence requirement, so it stays; it just stops shouting. */
 .maplibregl-ctrl-attrib {
-  background: rgb(10 12 16 / 74%) !important;
+  background: rgb(var(--bg-rgb) / 74%) !important;
   font-size: 10px;
 }
 
@@ -1846,5 +1922,22 @@ button:focus-visible {
 @media (hover: none), (max-width: 48rem) {
   .maplibregl-ctrl-top-right {
     display: none;
+  }
+}
+
+/* The bold half of the wordmark, matching the logo lockup. */
+.mark-word b {
+  font-weight: 700;
+}
+
+/* Dark tiles need more covering than light ones to bring the rail forward, so the
+   scrim keeps its original weights only in that mode. */
+@media (prefers-color-scheme: dark) {
+  .stage-map::after {
+    background: linear-gradient(96deg, var(--bg) 30%, rgb(var(--bg-rgb) / 72%) 56%, rgb(var(--bg-rgb) / 30%));
+  }
+
+  #app[data-view="results"] .stage-map::after {
+    background: linear-gradient(96deg, var(--bg) 10%, rgb(var(--bg-rgb) / 58%) 32%, rgb(var(--bg-rgb) / 0%) 60%);
   }
 }
