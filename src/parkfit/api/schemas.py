@@ -209,6 +209,32 @@ class EvidenceDetail(ApiModel):
     total_spaces: int | None = None
 
 
+class NavigationLinkResponse(ApiModel):
+    """One "open in ..." button."""
+
+    provider: str
+    display_name: str
+    url: str
+
+
+class NavigationResponse(ApiModel):
+    """Where to send the driver, and how honest the point is.
+
+    ``lat``/``lon`` is the exact destination, never an address: the receiving app would
+    re-geocode a street string against its own database and land somewhere else. For a car
+    park it is the entrance where one is recorded, and ``point_description`` says which,
+    because a driver arriving at a centroid needs to know they are still looking for the
+    way in.
+    """
+
+    lat: float
+    lon: float
+    label: str
+    is_entrance: bool
+    point_description: str
+    links: list[NavigationLinkResponse] = Field(default_factory=list)
+
+
 class RecommendationResponse(ApiModel):
     id: str
     kind: str
@@ -232,6 +258,7 @@ class RecommendationResponse(ApiModel):
     restriction_warnings: list[str] = Field(default_factory=list)
     is_exact_space: bool = False
     expires_at: datetime | None = None
+    navigation: NavigationResponse | None = None
 
 
 class SearchResponse(ApiModel):

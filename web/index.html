@@ -10,6 +10,17 @@
     />
     <title>ParkFit NL</title>
     <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- Preconnect before the stylesheet, so the font files start downloading on the
+         first round trip rather than after the CSS has been parsed. display=swap keeps
+         text readable while they arrive; the fallback stack in style.css is what is
+         actually shown until then, so nothing shifts if the network is slow or absent. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>&#128663;</text></svg>" />
   </head>
   <body>
