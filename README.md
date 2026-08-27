@@ -80,24 +80,100 @@ municipal bay sensors report every minute.
 
 ---
 
-## Run it
+## Get it
 
-```powershell
-.\tasks.ps1 setup          # venv, dependencies, CMake configure
-.\tasks.ps1 build          # C++ core, vision, pybind11 module
-.\tasks.ps1 test           # 143 C++ tests, 171 Python tests
-pf ingest all              # RDW, NDW, Amsterdam, OSM into a local database
-pf search "Rembrandt House Museum" --duration 120
-.\tasks.ps1 serve          # API on :8000, web app on :5173
-pf evaluate                # the metric table above
+You need **git**, **Python 3.12+**, **Node 20+**, **ffmpeg**, and a C++20 compiler
+(MSVC Build Tools on Windows, gcc or clang elsewhere). CMake and Ninja come bundled with
+the VS Build Tools; on Linux and macOS install them from your package manager.
+
+```bash
+git clone https://github.com/Coflazo/CamToParkingSlot.git
+cd CamToParkingSlot
 ```
 
-Machine learning, either from the command line or step by step with charts:
+Dependencies are managed with [uv](https://docs.astral.sh/uv/). Install it once:
+
+```bash
+# macOS and Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows PowerShell
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+## Run it
+
+The commands are the same everywhere. Only the way you invoke the task runner differs.
+
+### Windows, PowerShell
 
 ```powershell
-pf predict all             # demand history, decay rates, occupancy model
-pf detect all              # scene dataset, detector training, ONNX export
-jupyter lab notebooks/     # the same pipelines, visual, one step at a time
+.\tasks.ps1 setup
+.\tasks.ps1 build
+.\tasks.ps1 test
+```
+
+### Windows, cmd.exe
+
+```bat
+powershell -ExecutionPolicy Bypass -File tasks.ps1 setup
+powershell -ExecutionPolicy Bypass -File tasks.ps1 build
+powershell -ExecutionPolicy Bypass -File tasks.ps1 test
+```
+
+### Windows, Git Bash or WSL
+
+```bash
+powershell.exe -ExecutionPolicy Bypass -File tasks.ps1 setup
+powershell.exe -ExecutionPolicy Bypass -File tasks.ps1 build
+```
+
+### macOS and Linux
+
+There is no PowerShell dependency; run the three steps directly.
+
+```bash
+uv sync --all-extras
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+uv run pytest tests -q
+```
+
+### Then, on any platform
+
+```bash
+uv run pf ingest all                                  # pull the open data
+uv run pf search "Rembrandt House Museum" --duration 120
+uv run pf evaluate                                    # the metric table above
+uv run pf status                                      # what is loaded
+```
+
+The web app needs two terminals, because each command blocks:
+
+```bash
+# terminal 1
+uv run uvicorn parkfit.api.app:app --host 127.0.0.1 --port 8000
+
+# terminal 2
+cd web && npm install && npm run dev
+```
+
+Then open **http://127.0.0.1:5173**. API docs are at **http://127.0.0.1:8000/docs**.
+
+On Windows you can use `.\tasks.ps1 serve` and `.\tasks.ps1 web` instead.
+
+The first search takes about four seconds while the 188,715-node road graph and the
+spatial index load. Every search after that is around 200 ms.
+
+### Machine learning
+
+Either from the command line, or step by step with charts:
+
+```bash
+uv run pf detect all                # dataset, detector training, ONNX export
+uv run pf predict all               # occupancy history, decay rates, model
+uv run pf cameras discover          # every mapped camera in the Netherlands
+uv run jupyter lab notebooks/       # the same pipelines, visual, one step at a time
 ```
 
 No Docker required. PostGIS, Redis and OSRM are an optional upgrade path, never the
