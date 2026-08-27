@@ -8,17 +8,48 @@ That is a real Amsterdam bay and a real Volvo S60, both at their published dimen
 both from Dutch open data. The 36 cm is subtraction. Bay and car are drawn at one scale,
 so the picture cannot flatter the fit.
 
-Width is what is tight here. The bay is 2.21 m, the S60 is 1.80 m across the bodywork, and
-a parallel bay asks for only 5 cm of lateral margin in total, which leaves 36 cm. Length is
+Width is what is tight. The bay is 2.21 m, the S60 is 1.80 m across the bodywork, and a
+parallel bay asks for 5 cm of lateral margin in total, which leaves 36 cm. Length is
 nowhere near as close, at 54 cm clear off each end.
+
+---
+
+## Run it
+
+```bat
+run.bat
+```
+
+Double-click it, or type it in cmd, PowerShell or Git Bash. It checks what is missing,
+installs `uv` if you do not have it, pulls the open data the first time, starts both
+servers and opens the page. Running it twice is safe: every step checks whether it is
+already done.
+
+You need git, Node 20+ and ffmpeg on PATH first. Everything else it handles.
+
+[Full instructions, including macOS and Linux](#running-it-the-long-way) are further down.
+
+---
+
+## What it does
+
+![The working state: search console, ranked results with evidence badges and a fit diagram, over a live map](docs/images/app.png)
+
+Type where you are going and pick which car you drive. Results are ranked by what parking
+actually costs you, meaning drive time plus walk time plus price plus the chance the space
+is gone when you arrive, and filtered to spaces the car fits.
+
+The line under the search box reads "308 considered within 800 m, ruled out: 103 too large
+for your vehicle, 87 not permitted". Switch to a Sprinter and the kerb bays vanish, because
+a 5.7 m bay cannot take a 7 m van.
 
 ---
 
 ## Results
 
-I got these by running `pf evaluate`. Full output in `docs/architecture/evaluation.json`.
+Measured with `pf evaluate`. Full output in `docs/architecture/evaluation.json`.
 
-| Metric | Measured | Target | |
+| | Measured | Target | |
 |---|---:|---:|:--|
 | False-free rate | **0.56 %** | ≤ 2 % | pass |
 | Vacant precision | **99.13 %** | ≥ 98 % | pass |
@@ -30,341 +61,201 @@ I got these by running `pf evaluate`. Full output in `docs/architecture/evaluati
 
 Over 3,000 fit trials, 4,000 frame samples, 60 rendered scenes and 12 search runs.
 
-The one I watch is the false-free rate, which counts how often the system says a space is
-free when it is not. Accuracy on its own hides that. A detector that calls every space
-occupied scores well on accuracy and is useless, and one that invents a free space now and
-then sends someone across a city for nothing. 10 of 1,225 truly vacant trials came out
-wrong in the unsafe direction.
-
-### Vehicle detector, on rendered scenes
-
-| | |
-|---|---:|
-| F1 | **0.994** |
-| Precision | 0.996 |
-| Recall | 0.992 |
-| Box corner MAE | **0.81 px** |
-| Parameters | 322,331 |
-
-F1 by lighting condition: day 1.000, overcast 1.000, rain 1.000, dusk 1.000, glare 0.988,
-night 0.974.
-
-Read that table narrowly. It says the model learned the renderer, and the renderer is what
-makes gap-length error measurable at all, because the true answer is known by
-construction. It says nothing about a real street: the same model put through a live
-Amsterdam camera reported two motorcycles in a tree. On real frames the numbers are
-precision 0.120 and recall 0.014, and the whole investigation is in
-[Teaching it to see a real street](#teaching-it-to-see-a-real-street).
-
-### Occupancy model
-
-Brier score, lower is better. Split by target and by time, never at random.
-
-| Held out | Rows | Model | Flat prior | Per kind | Per target | AUC |
-|---|---:|---:|---:|---:|---:|---:|
-| unseen time | 30,704 | **0.2005** | 0.2689 | 0.2192 | 0.2075 | 0.717 |
-| unseen targets | 38,304 | **0.2127** | 0.2362 | 0.2255 | n/a | 0.648 |
-
-The per-target column is the one to compare against. It is the best a single constant can
-do for that specific bay, so beating it means the model picked up time-of-day structure
-that no constant can express.
+The one I watch is the false-free rate: how often the system says a space is free when it
+is not. Accuracy on its own hides it. A detector that calls every space occupied scores
+well on accuracy and is useless, and one that invents a free space now and then sends
+someone across a city for nothing. 10 of 1,225 truly vacant trials came out wrong in the
+unsafe direction.
 
 ---
 
-## Three things I did not expect
+## Is this bay free?
 
-Amsterdam publishes every parking bay as a surveyed polygon. All 210,247 of them, with the
-layout, the sign code and the time regimes. That changed the plan. I had assumed the hard
-part was finding a legal space and measuring it with computer vision, which is a research
-problem. With the polygons in hand, the question is only whether a known bay is occupied,
-which is doable. The bay corners are surveyed points in the same metric frame too, so the
-cameras can be calibrated against them.
+This is the computer vision that works, and it took me a long detour to arrive at the
+right question.
 
-The national address geocoder cannot find "Rembrandthuis". PDOK indexes the address
-register rather than places, so it returns nothing for the museum's name and gets
-"Jodenbreestraat 4" exactly right. People type destinations, so the geocoder has to be
-hybrid: OSM points of interest first, addresses second. 18 of 18 real destination names
-resolve now.
+I spent weeks trying to *find* vehicles in a street scene. That is the hard version of the
+problem, and my detector generalised badly: precision 0.120 on cameras it had not seen.
+Then it clicked that Amsterdam already publishes 210,247 bays as surveyed polygons, so
+where every bay is was never unknown. Whether it currently has a car in it is, and that is
+a per-crop binary question.
 
-Polling slowly wrecks the decay-rate estimate. A free space on a busy centre street lasts
-about five minutes on average. Poll every fifteen minutes and you recover 70 % of the true
-rate, every thirty and you get 52 %, because a turnover that starts and finishes between
-two samples never happened as far as you can tell. That is the feed's fault rather than
-the estimator's, and it is why municipal bay sensors report every minute.
+[CNRPark-EXT](http://cnrpark.it/) is exactly that question with 144,965 labelled answers:
+real parking-space crops from nine fixed cameras over three months, under sunny, overcast
+and rainy skies.
+
+![Real CNRPark-EXT crops with the classifier's verdict and confidence, green where it agrees with the label and red where it does not](docs/images/occupancy_patches.png)
+
+MobileNetV3 with ImageNet weights, 1.5 million parameters, six epochs, 824 MB of VRAM.
+
+| | Held-out days | Held-out cameras |
+|---|---:|---:|
+| Test crops | 31,825 | 37,048 |
+| Accuracy | **0.9976** | **0.9956** |
+| Precision | 0.9986 | 0.9949 |
+| Recall | 0.9973 | 0.9971 |
+| AUC | 0.9996 | 0.9989 |
+| False-free rate | **0.0014** | **0.0023** |
+| Threshold | 0.10 | 0.24 |
+
+The right column is the one that matters. Cameras 8 and 9 are held out entirely, so it is
+answering about viewpoints it has never seen, which is the question that decides whether
+this can be pointed at Amsterdam. Accuracy by weather on that split: overcast 0.9970,
+sunny 0.9959, rainy 0.9913.
+
+![False-free rate and overall error against threshold, with the chosen operating point marked](docs/images/occupancy_threshold.png)
+
+The threshold is part of the export rather than a constant in the worker. It was swept on
+validation to hold the false-free rate under the 2 % ceiling, and weights shipped without
+their operating point leave the worker guessing at 0.5, which is not the point anyone
+measured.
+
+Inference runs in C++ because it is on the clock: once per bay per frame, and a camera
+over a street sees a few hundred bays. Crops go through one batched call rather than a
+loop. Training stays in Python, where an extra minute costs nothing.
+
+Verified across all three languages rather than assumed. PyTorch to ONNX agrees to
+4.9e-07, and the same frame through the C++ path and the Python path agrees to 4.9e-07, so
+the resampling matches too.
 
 ---
 
-## Teaching it to see a real street
+## The detector, which does not work
 
-This is the part I got most wrong, so it gets the most space.
+The other half of the vision work, kept here because the failure is the interesting part.
 
 The first detector trained on rendered scenes: flat-shaded boxes standing in for cars, lit
 by a fake sun. That buys exact ground truth, which is the only honest way to measure
-gap-length error, and it is why the rendered pipeline is still here. What it does not buy
-is a street. The first real frame I put through it came back with two motorcycles, one in
-a tree and one on empty pavement, and both police vans in the shot missing.
+gap-length error. It does not buy a street. The first real frame came back with two
+motorcycles, one in a tree and one on empty pavement, and both police vans missing.
 
-So the pixels now come from live cameras and the labels come from something that has seen
-real photographs.
+So I went and got real frames. `pf detect harvest` pulls them from feeds their operators
+publish; I found 74 live Dutch streams and 69 of them gave up frames. A COCO-pretrained
+Faster R-CNN labels them, which is far too heavy for the worker but runs once, offline.
 
-### Where the frames come from
-
-`pf detect harvest` pulls frames off feeds their operators publish. Two of the four this
-file used to advertise had gone dead, so I went looking properly and found 74 live Dutch
-streams. 69 of them gave up frames.
-
-![Teacher labels on a real frame, boxes on cars along a boulevard with bicycles picked out separately](docs/images/teacher_labels.png)
-
-Getting the frames at all took a detour. ffmpeg cannot complete a TLS handshake against
-googlevideo from this machine and dies before any HTTP happens, while curl and urllib
-manage it fine. So transport is split three ways: yt-dlp resolves the manifest, urllib
-fetches the playlist and segments, and ffmpeg only ever opens a file already on disk. A
-feed carrying an hour of DVR segments gets sampled evenly across the hour rather than
-crawled at the live edge, because twelve frames from twelve consecutive seconds are twelve
-pictures of the same parked cars.
+![Teacher labels on a real frame: boxes on cars along a boulevard with bicycles picked out separately](docs/images/teacher_labels.png)
 
 | | |
 |---|---:|
-| Live Dutch streams found | 74 |
-| Cameras that produced frames | **69** |
-| Real frames harvested | **704** |
-| Teacher boxes | **2,491** |
+| Cameras that produced frames | 69 |
+| Real frames harvested | 704 |
+| Teacher boxes | 2,491 |
 
-![Teacher boxes per camera, ranked, a long tail from about 175 down to a handful](docs/images/dataset_cameras.png)
+Three things were wrong, in order of how much they cost me.
 
-### The teacher
+The evaluation applied sigmoid twice. `build_model` already sigmoids the heatmap inside
+`forward()` and I sigmoided it again before decoding, which squashed every cell into the
+0.50 to 0.73 band and turned the whole grid into detections. Precision read 0.004. The
+per-class metric had its own bug and announced itself more loudly, reporting a recall of
+7.495.
 
-A Faster R-CNN carrying COCO weights has seen 118,000 real photographs. It is far too
-heavy to run per frame in the vision worker, but it runs once, offline, and writes down
-what it saw. On the Dam Square frame that broke the old model it found 14 vehicles.
+Nine cameras taught it nine streets. With the sigmoid fixed it hit 0.98 confidence on
+cameras it trained on and 0.10 on two it had not seen. I assumed capacity and swapped the
+322k from-scratch trunk for an ImageNet-pretrained MobileNetV3: precision on unseen
+cameras went 0.200 to 0.500, recall stayed at 0.003, and dropping the threshold to 0.08
+gave detections with zero true positives. The predictions were in the wrong places rather
+than merely faint, which ruled out the backbone and left viewpoint diversity. Going from 9
+cameras to 48 moved precision to 0.716 and recall to 0.111.
 
-These are pseudo-labels and I do not pretend otherwise. The teacher is wrong sometimes and
-the student inherits those mistakes. What the arrangement buys is domain: every pixel is a
-real Dutch street under real light. Gap-length accuracy is still measured against rendered
-scenes, where the answer is known by construction.
+The cars are too small to see. That is where it still sits.
 
-Two of the seven classes have no source here. COCO has no van, they land in car or truck,
-and no trailer. The student sees five of seven, which is a hole rather than something I
-found a way to phrase around.
+![Vehicle width histogram, median 17px at 512x288 input, doubling to 33px at 960x544](docs/images/box_sizes.png)
 
-### Three things that were wrong
-
-**The evaluation applied sigmoid twice.** `build_model` already sigmoids the heatmap
-inside `forward()` and I sigmoided it again before decoding. That squashed every cell into
-the 0.50 to 0.73 band, above any sensible threshold, so the whole grid became detections
-and precision read 0.004. The per-class metric had its own bug and announced itself more
-loudly: it counted a hit whenever any truth box shared the predicted class, which produced
-a recall of 7.495.
-
-**Nine cameras taught it nine streets.** With the sigmoid fixed the model hit 0.98
-confidence on cameras it trained on and 0.10 on two it had not seen. Loss fell to 0.025.
-It fit perfectly and generalised not at all. I assumed capacity and swapped the 322k
-from-scratch trunk for an ImageNet-pretrained MobileNetV3. Precision on unseen cameras
-went 0.200 to 0.500, recall stayed at 0.003, and dropping the threshold to 0.08 gave
-detections with zero true positives, so the predictions were in the wrong places rather
-than merely faint. That ruled out the backbone and left viewpoint diversity.
-
-Going from 9 cameras to 48 is what actually moved it:
-
-| Held-out cameras | 9 cameras | 48 cameras |
-|---|---:|---:|
-| Precision | 0.500 | **0.716** |
-| Recall | 0.003 | **0.111** |
-| Peak confidence, Beursplein frame | 0.045 | **0.323** |
-| False positives on that frame | invented vehicles | **0** |
-
-**The cars are too small to see.** Measuring what was left pointed at pixels, not data.
-
-![Vehicle width histogram, median 17px at 512x288 doubling to 33px at 960x544](docs/images/box_sizes.png)
-
-The median vehicle is 17 pixels wide at 512x288 input and 71 percent are under 24, which
-at stride 4 is a car four cells across. The C++ worker reads `input_width` and
-`input_height` from the model's sidecar rather than hardcoding them, so resolution is
-configuration on that side. Holding the set as float32 made the change unaffordable, 650
-frames at 960x544 is 4.1 GB on a machine with under 3 GB free, so frames are kept as uint8
-at 1.03 GB and converted per batch on the GPU where it costs nothing.
-
-### Where it actually stands
-
-I am not going to dress this up. The model that ships trains on all 69 cameras and is held
-out against 12 of them:
-
-| On 12 cameras never seen in training | |
-|---|---:|
-| Precision | 0.120 |
-| Recall | 0.014 |
-| F1 | 0.026 |
-| Box corner MAE | 0.14 px |
-| ONNX parity against PyTorch | 4.5e-06 |
-
-That is worse than the 0.716 and 0.111 above, and the difference is the test set rather
-than the model. The six-camera holdout was city streets. The twelve-camera one adds an
-airport, two construction sites, a railway cam and a seaside promenade, which is a fairer
-question and a much harder one. Quoting the kinder number would have been easy and would
-have been a lie.
+The final model trains on all 69 cameras and is held out against 12 of them, scoring
+precision 0.120 and recall 0.014. That is worse than the 0.716 above and the difference is
+the test set rather than the model: six city-street cameras versus twelve that add an
+airport, two construction sites, a railway cam and a seaside promenade. Quoting the kinder
+number would have been easy and would have been a lie.
 
 The higher-resolution run is unfinished rather than disproven. 120 epochs at 960x544
 reached loss 3.09 against 1.36 at the lower resolution and scored zero, which is what a
-quarter of the updates spread over four times the grid cells looks like. It needs hours I
-did not have, and I would rather say so than quote whichever run happened to look better.
+quarter of the updates spread over four times the grid cells looks like.
 
-So: the pipeline is real end to end, the frames are real, the labels are real, the export
-is verified, and the detector is not good enough to put in front of a driver. The
-occupancy this product actually serves comes from operator feeds and municipal sensors,
-not from this model.
+None of this reaches a driver. Occupancy served to users comes from operator feeds,
+municipal sensors and the classifier above.
 
 ---
 
-## The interface
+## Where the training data comes from
 
-![The opening screen: "Your car. That bay. Measured." in display type over a dimmed map of Amsterdam](docs/images/hero.png)
+Everything the models learned from, and who to credit for it.
 
-![The working state: search console, ranked results with evidence badges and fit diagrams, over a live map](docs/images/app.png)
+| Dataset | Used for | Size | Licence and source |
+|---|---|---|---|
+| **CNRPark-EXT** | The occupancy classifier, the model that works | 144,965 labelled crops, 9 cameras | Free for research. Amato et al., [cnrpark.it](http://cnrpark.it/) |
+| **COCO** (via torchvision) | The teacher that labels real frames | 118k photographs, pretrained weights | CC BY 4.0. Lin et al., 2014 |
+| **ImageNet** (via torchvision) | Pretrained trunks for both models | 1.2M photographs, pretrained weights | Deng et al., 2009 |
+| **Live Dutch cameras** | 704 real frames for the detector | 69 feeds, operator-published | Watched as published, honoured robots.txt |
+| **RDW open data** | Vehicle dimensions, 14-car test fleet | 4,862,118 passenger cars with height | Dutch vehicle register, open |
+| **Amsterdam parkeervakken** | 210,247 surveyed bay polygons | Whole city, sign codes and time regimes | City of Amsterdam, open |
+| **NDW, PDOK, OpenStreetMap** | Live occupancy, geocoding, points of interest | National | Open, each licence in `docs/data_sources/sources.md` |
 
-You type where you are going and pick which car. Results are ranked by what parking
-actually costs you, meaning drive time plus walk time plus price plus the chance it is
-gone when you arrive, and filtered to spaces the car fits.
+Rendered scenes are still generated by this project's own renderer, and they earn their
+place: they are the only source with exact ground-truth gap lengths, which is what makes
+the 0.001 m gap MAE a measurement rather than a guess.
 
-The line under the search box reads "308 considered within 800 m, ruled out: 103 too large
-for your vehicle, 87 not permitted". Switch the car to a Sprinter and the kerb bays vanish,
-because a 5.7 m bay cannot take a 7 m van.
+### Datasets I looked at and did not use
+
+Checking these properly was worth the time, so the reasoning is written down.
+
+**PKLot** (12,416 images, 3 lots) asks the same question as CNRPark-EXT and is a fine
+dataset. CNRPark-EXT ships pre-cropped patches with official splits by day, camera and
+weather, which is the protocol I wanted, so it won on convenience rather than quality.
+
+**Surround-view parking-slot detection** ([CRPS-D / SS-PSD](https://arxiv.org/abs/2509.13133),
+and the [panoramic PS2.0 work](https://pmc.ncbi.nlm.nih.gov/articles/PMC12568149/)) solves
+a different geometry: fisheye cameras on a self-parking car looking down at the ground.
+A fixed street camera 18 m up is not that, and the models do not transfer.
+
+**Vehicle make and model recognition** (VMMRdb and similar) is the one I most wanted to
+work, because knowing a parked car is a Volvo S60 would give its exact dimensions and let
+the CV and the register check each other. It cannot work here, and the reason is a
+measurement rather than an opinion: across 1,734 cars detected in the harvested frames the
+median car is **39 pixels wide** in a native 1280x720 frame, and 71 % are under 64 pixels.
+Fine-grained recognition needs a readable grille and badge. At 39 pixels nobody can tell an
+S60 from an A4, so the honest ceiling is vehicle *class*, which the detector already
+predicts and which maps to a dimension range rather than a number.
+
+**Parking-lot demo repositories** ([one](https://github.com/8harath/Car-Parking-Detection),
+[two](https://github.com/VisionPark/VisionParkDetect), [three](https://olgarose.github.io/ParkingLot/))
+are applications rather than datasets. The second is a useful classical-CV baseline on
+PKLot at 82 % to 97 % depending on lot and weather, which is the bar the classifier above
+clears.
+
+**Roboflow Universe** needs an API key, and its endpoints return 403 to an unauthenticated
+client, so nothing from there is in this project.
+
+**insecam** I will not use. It indexes cameras that are unsecured rather than published,
+and nobody in those frames agreed to be in them. Every camera here is one its operator
+broadcasts on purpose.
+
+---
+
+## The cameras
 
 ![The live camera viewer: an embedded stream from Amsterdam Damrak with the operator named and a close button](docs/images/camera.png)
 
 Every camera the vision pipeline may read is one you may watch. They sit on the map as
-viewfinder markers, the same shape as the logo. A system that says a bay is free on the
+viewfinder markers, the same shape as the logo. A system that claims a bay is free on the
 strength of a camera should be willing to show you the camera.
 
-<img src="docs/images/mobile.png" alt="The same search on a phone: the console stacks, the status pill drops, and the results keep their fit diagrams" width="300">
+Two of the four feeds this file used to advertise are dead, so I went looking properly and
+found 74 live Dutch streams, of which 10 verified fetchable on the first pass. Seven that
+can be placed on a map are in the registry the search reads; a port terminal, a railway and
+a waterway are real training footage and useless as "a camera near your bay", so they are
+harvested from and left out. `pf cameras verify` re-checks rather than trusting the list,
+because these are other people's cameras and they go down without telling anyone.
 
-I checked it at 320, 390, 412, 768, 1024, 1440, 1920 and 2560 pixels wide, plus landscape
-phones. Three things actually broke. At 320 px the page overflowed, because the status pill
-and the Vehicles button will not share a row. The search field collapsed to 50 px beside
-its own submit button. And a 568 px-tall viewport could not hold the headline and the
-console at once, so on short screens the supporting copy goes and the console stays.
+Getting frames at all took a detour. ffmpeg cannot complete a TLS handshake against
+googlevideo from this machine and dies before any HTTP happens, while curl and urllib
+manage it. So transport is split three ways: yt-dlp resolves the manifest, urllib fetches
+the playlist and segments, and ffmpeg only ever opens a file already on disk.
 
----
-
-## Get it
-
-You need git, Python 3.12+, Node 20+, ffmpeg, and a C++20 compiler (MSVC Build Tools on
-Windows, gcc or clang elsewhere). CMake and Ninja come bundled with the VS Build Tools; on
-Linux and macOS install them from your package manager.
-
-```bash
-git clone https://github.com/Coflazo/CamToParkingSlot.git
-cd CamToParkingSlot
-```
-
-Dependencies are managed with [uv](https://docs.astral.sh/uv/). Install it once:
-
-```bash
-# macOS and Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Windows PowerShell
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-## Run it
-
-The steps are the same everywhere. Only the way you invoke the task runner differs.
-
-### Windows, PowerShell
-
-```powershell
-.\tasks.ps1 setup
-.\tasks.ps1 build
-.\tasks.ps1 test
-```
-
-### Windows, cmd.exe
-
-```bat
-powershell -ExecutionPolicy Bypass -File tasks.ps1 setup
-powershell -ExecutionPolicy Bypass -File tasks.ps1 build
-powershell -ExecutionPolicy Bypass -File tasks.ps1 test
-```
-
-### Windows, Git Bash or WSL
-
-```bash
-powershell.exe -ExecutionPolicy Bypass -File tasks.ps1 setup
-powershell.exe -ExecutionPolicy Bypass -File tasks.ps1 build
-```
-
-### macOS and Linux
-
-No PowerShell needed, so run the steps directly.
-
-```bash
-uv sync --all-extras
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
-uv run pytest tests -q
-```
-
-### Then, on any platform
-
-```bash
-uv run pf ingest all                                  # pull the open data
-uv run pf search "Rembrandt House Museum" --duration 120
-uv run pf evaluate                                    # the metric table above
-uv run pf status                                      # what is loaded
-```
-
-The web app needs two terminals, because each command blocks:
-
-```bash
-# terminal 1
-uv run uvicorn parkfit.api.app:app --host 127.0.0.1 --port 8000
-
-# terminal 2
-cd web && npm install && npm run dev
-```
-
-Then open http://127.0.0.1:5173. API docs are at http://127.0.0.1:8000/docs.
-
-On Windows you can use `.\tasks.ps1 serve` and `.\tasks.ps1 web` instead.
-
-The first search takes about four seconds while the 188,715-node road graph and the
-spatial index load. Every search after that is around 200 ms.
-
-### Add a car, or you will not see the interesting part
-
-Search works signed out, but the fit diagram is the whole point and it needs to know what
-you drive. Vehicles belong to an account, so make one:
-
-1. Open http://127.0.0.1:5173 and press **Vehicles** in the top right.
-2. Register with any email and password. It is your machine and your database.
-3. Add a car. `uv run pf cars` prints the fourteen test vehicles with their real RDW
-   dimensions if you want something plausible: the Volvo S60 is 460 by 180 by 143 cm and
-   1566 kg.
-4. Search again and pick it in the **Vehicle** dropdown.
-
-The status line under the search box changes the moment a car is selected. Without one it
-says how many options it found. With one it says how many it threw away and why: "308
-considered within 800 m, ruled out: 103 too large for your vehicle, 87 not permitted".
-
-### Watch the cameras
-
-Every camera the vision pipeline is allowed to read is one you are allowed to watch. They
-sit on the map as viewfinder markers. Click one for the live stream, press Escape or
-Close to shut it. Nothing is recorded, and closing the panel drops the stream rather than
-leaving it running behind the page.
-
-### Machine learning
-
-Either from the command line, or step by step with charts:
-
-```bash
-uv run pf detect all                # dataset, detector training, ONNX export
-uv run pf predict all               # occupancy history, decay rates, model
-uv run pf cameras discover          # every mapped camera in the Netherlands
-uv run jupyter lab notebooks/       # the same pipelines, visual, one step at a time
-```
-
-No Docker required. PostGIS, Redis and OSRM are an optional upgrade path.
+The registry refuses by default. A feed nobody has assessed does not run, production
+accepts only an explicit authorisation or an owner attestation, and "the robots file
+allowed it" is not a licence. Frames are processed in memory and thrown away, only
+occupancy, geometry, confidence and timestamps are published, and there is no face or
+plate recognition anywhere.
 
 ---
 
@@ -373,7 +264,7 @@ No Docker required. PostGIS, Redis and OSRM are an optional upgrade path.
 ```
 Web app  (Vite, TypeScript, MapLibre)
     |
-FastAPI  search, ranking, vehicles, geocoding, availability stream
+FastAPI  search, ranking, vehicles, geocoding, cameras, availability stream
     |
     |-- parkfit_native (pybind11 -> C++)
     |      geo, spatial index, routing, fit engine, ranking, navigation links
@@ -383,28 +274,43 @@ FastAPI  search, ranking, vehicles, geocoding, availability stream
 pf_cv_worker (C++)  ffmpeg -> health -> homography -> ONNX -> state machine
 ```
 
-The spatial grid answers a radius query over 250,000 bays in 93 µs. I measured the same
-query as a SQL bounding-box scan at 200 ms warm and about four seconds cold, which is why
-the grid is there.
+The split is on the clock, not on taste. Anything that runs per frame or per bay is C++:
+geometry, the spatial index, routing, the fit engine, ranking, and the occupancy
+classifier. Anything that runs once or on demand is Python: ingest, the API, training,
+the CLI. Models cross the boundary as ONNX with a JSON sidecar carrying the input size and
+the operating threshold, so retraining at a different resolution cannot silently start
+feeding the graph wrongly scaled images.
 
-Bay size comes from the polygon itself, by pairing opposite edges. The enclosing rectangle
-does not work: a Prinsengracht bay that is 5.66 by 2.61 m sits at 48°, and its enclosing
-rectangle is 7.40 by 1.89 m, which matches neither dimension. Switching to edge pairs took
-usable bays for a VW Polo from 40 % to 59.6 %.
+The spatial grid answers a radius query over 250,000 bays in 93 µs. The same query as a
+SQL bounding-box scan measured 200 ms warm and about four seconds cold, which is why the
+grid is there.
+
+Bay size comes from the polygon by pairing opposite edges. The enclosing rectangle does not
+work: a Prinsengracht bay that is 5.66 by 2.61 m sits at 48°, and its enclosing rectangle
+is 7.40 by 1.89 m, which matches neither dimension. Switching to edge pairs took usable
+bays for a VW Polo from 40 % to 59.6 %.
 
 Mirrors and bodywork are tracked separately, because mirrors hang over the painted line
 into airspace that is nobody's bay. Parallel kerb bays get NEN 2443 parallel clearances
-instead of perpendicular ones. The median Amsterdam kerb bay is 1.96 m and a Polo is 1.75 m
+instead of perpendicular ones: the median Amsterdam kerb bay is 1.96 m and a Polo is 1.75 m
 wide, so asking for 25 cm of lateral margin rejects an ordinary car by four centimetres.
+
+Two more things that only turned up by looking. The national geocoder cannot find
+"Rembrandthuis", because PDOK indexes the address register rather than places, so the
+geocoder is hybrid: OSM points of interest first, addresses second, and 18 of 18 real
+destination names resolve. And polling slowly wrecks the decay-rate estimate: a free space
+on a busy centre street lasts about five minutes, so fifteen-minute polling recovers 70 %
+of the true rate and thirty-minute polling 52 %, because a turnover that starts and
+finishes between two samples never happened as far as you can tell.
 
 ---
 
 ## Where every number comes from
 
-Every response carries its source and how old it is. Sources are ranked and never overwrite
-each other: operator feed, then camera, then municipal sensor, then user report, then
-model, then the static register. Every observation is kept, and disagreements get resolved
-on read.
+Every response carries its source and how old it is. Sources are ranked and never
+overwrite each other: operator feed, then camera, then municipal sensor, then user report,
+then model, then the static register. Every observation is kept, and disagreements get
+resolved on read.
 
 If a live source's last observation is older than the staleness window, it stops counting
 as live and gets labelled stale. I would rather show a stale label than a confident wrong
@@ -416,11 +322,11 @@ number.
 
 ![The handoff sheet showing the exact coordinate and six navigation apps](docs/images/handoff.png)
 
-Tapping a result hands the space over to Google Maps, Apple Maps, Waze, Yandex,
-OpenStreetMap or whatever the device registers for `geo:` URIs, as coordinates rather than
-an address. A street string gets re-geocoded by the receiving app against its own database,
-which lands you near the place instead of on it. Coordinates go over at seven decimal
-places, about a centimetre, so the format is never the limiting factor.
+Tapping a result hands the space to Google Maps, Apple Maps, Waze, Yandex, OpenStreetMap
+or whatever the device registers for `geo:` URIs, as coordinates rather than an address. A
+street string gets re-geocoded by the receiving app against its own database, which lands
+you near the place instead of on it. Coordinates go over at seven decimal places, about a
+centimetre, so the format is never the limiting factor.
 
 For a car park the destination is the entrance where one is recorded, and the interface
 says which point it used. Routing to a garage centroid drops you inside a building outline
@@ -428,46 +334,104 @@ and you still have to find the ramp.
 
 ---
 
-## What does not work yet
+## The interface
 
-The occupancy model is trained on simulated history. The system has been ingesting live
-data for about a day, and you cannot fit "how full is this street at 18:00 on a Friday"
-with one Friday. What the Brier scores above measure is whether the model recovers demand
-structure it cannot see directly, which is a real estimation problem, but it is not a claim
-about real Amsterdam occupancy.
+![The opening screen: "Your car. That bay. Measured." in display type over a dimmed map of Amsterdam](docs/images/hero.png)
 
-The detector is not good enough to put in front of a driver. It reaches precision 0.120
-and recall 0.014 on twelve cameras it has never seen, which is not a number anyone should
-route a car on. The whole investigation is written up under "Teaching it to see a real
-street" above, including the two runs that scored better on easier test sets and why I am
-not quoting those instead. Occupancy served to users comes from operator feeds and
-municipal sensors; the model is not in that path.
+<img src="docs/images/mobile.png" alt="The same search on a phone: the console stacks, the status pill drops, and the results keep their fit diagrams" width="300">
 
-Camera coverage is a map rather than a network. 12,221 mapped camera locations come in
-from OpenStreetMap with real coordinates, operator and direction, and nearly all of them
-are private CCTV over a shop doorway. They carry no stream URL and permission
-`UNVERIFIED`, which is what the registry gate refuses to run.
+Checked at 320, 390, 412, 768, 1024, 1440, 1920 and 2560 pixels wide, plus landscape
+phones. Three things actually broke. At 320 px the page overflowed, because the status pill
+and the Vehicles button will not share a row. The search field collapsed to 50 px beside
+its own submit button. And a 568 px-tall viewport could not hold the headline and the
+console at once, so on short screens the supporting copy goes and the console stays.
 
-Two of the four feeds this file used to advertise are dead: Now4Rent's Dam Square answers
-"This video is not available" and Zaanse Schans is erroring. Rather than quietly lower the
-count I went looking properly and found 74 live Dutch streams, of which 10 verified
-fetchable on the first pass. Seven that can be placed on a map are in the registry the
-search reads; a port terminal, a railway and a waterway are real training footage and
-useless as "a camera near your bay", so they are harvested from and deliberately left out.
-`pf cameras verify` re-checks rather than trusting the list, because these are other
-people's cameras and they go down without telling anyone.
+The palette comes from the brand mark and nothing else: four corner brackets, a viewfinder,
+near-black on off-white. It carries no colour, so neither does the interface. The one place
+colour survives is where it carries information, because a driver reads a fit verdict off
+the colour before reading the words.
 
-Skylinewebcams lists 58 Dutch cameras and its robots file allows every crawler, so a plain
-browser renders the page and reads them, but the player resolves its manifest through a
-token endpoint, so I have the camera pages and not the streams. worldcams and
-dutchamsterdam return 403 to any client. I did not use insecam: it indexes cameras that
-are unsecured rather than published, and nobody in those frames agreed to be in them.
+---
 
-The registry refuses by default. A feed nobody has assessed does not run. Production only
-accepts an explicit authorisation or an owner attestation, and "the robots file allowed it"
-is not a licence. Frames are processed in memory and thrown away, and only occupancy,
-geometry, confidence and timestamps ever get published. No face or plate recognition,
-anywhere.
+## Running it the long way
+
+You need git, Python 3.12+, Node 20+, ffmpeg, and a C++20 compiler (MSVC Build Tools on
+Windows, gcc or clang elsewhere). CMake and Ninja come bundled with the VS Build Tools; on
+Linux and macOS install them from your package manager.
+
+```bash
+git clone https://github.com/Coflazo/CamToParkingSlot.git
+cd CamToParkingSlot
+```
+
+Dependencies are managed with [uv](https://docs.astral.sh/uv/):
+
+```bash
+# macOS and Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows PowerShell
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+Then, on any platform:
+
+```bash
+uv sync --all-extras
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
+uv run pytest tests -q
+
+uv run pf ingest all                                  # pull the open data
+uv run pf search "Rembrandt House Museum" --duration 120
+uv run pf evaluate                                    # the metric table above
+```
+
+On Windows `.\tasks.ps1 setup`, `build` and `test` do the same three steps.
+
+The web app needs two terminals, because each command blocks:
+
+```bash
+uv run uvicorn parkfit.api.app:app --host 127.0.0.1 --port 8000   # terminal 1
+cd web && npm install && npm run dev                              # terminal 2
+```
+
+Then open http://127.0.0.1:5173. API docs are at http://127.0.0.1:8000/docs. The first
+search takes about four seconds while the 188,715-node road graph and the spatial index
+load; every search after that is around 200 ms.
+
+### Add a car, or you will not see the interesting part
+
+Search works signed out, but the fit diagram is the whole point and it needs to know what
+you drive. Vehicles belong to an account:
+
+1. Press **Vehicles**, top right.
+2. Register with any email and password. It is your machine and your database.
+3. Add a car. `uv run pf cars` prints the fourteen test vehicles with their real RDW
+   dimensions: the Volvo S60 is 460 by 180 by 143 cm and 1566 kg.
+4. Search again and pick it in the **Vehicle** dropdown.
+
+The status line changes the moment a car is selected. Without one it says how many options
+it found; with one it says how many it threw away and why.
+
+### The machine learning
+
+```bash
+uv run pf occupancy stats                  # what CNRPark-EXT is on disk
+uv run pf occupancy train                  # the classifier, official day split
+uv run pf occupancy train --protocol camera --holdout camera8,camera9
+
+uv run pf detect harvest                   # real frames from every live camera
+uv run pf detect label                     # teacher labels
+uv run pf detect train-real                # the student
+uv run pf detect export-real               # ONNX plus the C++ sidecar
+
+uv run pf predict all                      # occupancy history, decay rates, model
+uv run jupyter lab notebooks/              # the same pipelines, visual, step by step
+```
+
+Training used a laptop RTX 4050: 824 MB of VRAM and about three minutes for the
+classifier. Compute was never the constraint here, data diversity was, so nothing needed a
+rented GPU.
 
 ---
 
@@ -582,13 +546,34 @@ UK and France.
 
 ---
 
+## What does not work yet
+
+The occupancy demand model is trained on simulated history. The system has been ingesting
+live data for about a day, and you cannot fit "how full is this street at 18:00 on a
+Friday" with one Friday. What its Brier scores measure is whether the model recovers demand
+structure it cannot see directly, which is a real estimation problem and not a claim about
+real Amsterdam occupancy. Its numbers: Brier 0.2005 against a 0.2689 flat prior on unseen
+time, 0.2127 against 0.2362 on unseen targets, AUC 0.717 and 0.648, split by target and by
+time and never at random.
+
+The vehicle detector is not good enough to route a car on, as set out above. The occupancy
+classifier is, and it is the one in the vision path.
+
+The bay-level polygons are Amsterdam only. Every other Dutch city has car parks and
+regimes but no surveyed kerb geometry, so outside Amsterdam the fit engine falls back to
+facility limits rather than bay measurements.
+
+---
+
 ## Stack
 
-C++20 for the geometry, spatial index, routing, fit engine, ranking and the vision worker.
-Python 3.12 with FastAPI, SQLAlchemy 2.0 and pybind11. PyTorch exported to ONNX Runtime for
-detection, LightGBM for occupancy. TypeScript and MapLibre on the web side. There is no
-OpenCV in the C++ path: the homography, the Jacobi eigensolver, the RANSAC and the
-perceptual hashing are written here and tested here.
+C++20 for the geometry, spatial index, routing, fit engine, ranking, vision worker and
+occupancy inference. Python 3.12 with FastAPI, SQLAlchemy 2.0 and pybind11 for everything
+that is not on the clock. PyTorch to ONNX Runtime for both models, LightGBM for demand.
+TypeScript and MapLibre on the web side. There is no OpenCV in the C++ path: the
+homography, the Jacobi eigensolver, the RANSAC and the perceptual hashing are written here
+and tested here.
 
-314 tests. The data comes from RDW, NDW, PDOK, OpenStreetMap and the City of Amsterdam,
-all open, each with its licence written down in `docs/data_sources/sources.md`.
+194 Python tests and 8 C++ suites. Data from RDW, NDW, PDOK, OpenStreetMap, the City of
+Amsterdam and CNRPark-EXT, each with its licence recorded in
+`docs/data_sources/sources.md`.

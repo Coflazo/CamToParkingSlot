@@ -60,11 +60,14 @@ if errorlevel 1 (
 echo   [OK] git, node
 
 REM --------------------------------------------------------------- python side
+REM --all-extras rather than a list of three. Naming a subset does not add to the
+REM environment, it defines it, so uv removes everything outside the list. An earlier
+REM version named three extras here and quietly uninstalled the plotting stack.
 echo   [ ] Python packages...
-call uv sync --extra ml --extra dev --extra cameras >nul 2>&1
+call uv sync --all-extras >nul 2>&1
 if errorlevel 1 (
     echo   [X] uv sync failed. Run it yourself to see why:
-    echo       uv sync --extra ml --extra dev --extra cameras
+    echo       uv sync --all-extras
     goto :halt
 )
 echo   [OK] Python packages
