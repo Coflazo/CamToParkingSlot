@@ -73,7 +73,7 @@ def test_an_origin_is_only_forwarded_when_one_is_given():
 
 
 def test_a_label_that_would_break_a_url_is_escaped():
-    """"Q-Park Bijenkorf & Dam" unescaped ends the query string at the ampersand."""
+    """ "Q-Park Bijenkorf & Dam" unescaped ends the query string at the ampersand."""
     handoff = build_handoff(lat=BAY_LAT, lon=BAY_LON, label="Q-Park Bijenkorf & Dam")
     apple = next(link for link in handoff.links if link.provider == "apple_maps")
     assert "%26" in apple.url
