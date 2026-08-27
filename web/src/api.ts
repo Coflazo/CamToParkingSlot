@@ -234,12 +234,50 @@ export interface PublicCamera {
   embed_url: string;
   watch_url: string;
   note: string;
+  free_spaces_seen: number;
 }
 
 export interface CameraList {
   cameras: PublicCamera[];
   count: number;
   disclaimer: string;
+}
+
+
+/** One vehicle the detector found in a camera frame, in frame pixels. */
+export interface DetectedBox {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  label: string;
+  score: number;
+}
+
+/** A stretch of kerb with nothing on it. Metres are estimates, never measurements. */
+export interface FreeSpaceBox {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  length_m: number;
+  depth_m: number;
+  fits: string[];
+}
+
+export interface CameraAnalysis {
+  camera_id: string;
+  ok: boolean;
+  reason: string;
+  age_seconds: number;
+  frame_width: number;
+  frame_height: number;
+  frame_data_uri: string;
+  vehicles: DetectedBox[];
+  free_spaces: FreeSpaceBox[];
+  pixels_per_metre: number;
+  scale_confident: boolean;
+  note: string;
 }
 
 export const api = {
@@ -285,6 +323,11 @@ export const api = {
   // Unauthenticated on purpose: these feeds are public already, and needing an
   // account to look at a public webcam would be theatre.
   cameras: () => request<CameraList>("/v1/cameras"),
+
+  // Asking marks the camera as watched, so the server keeps a fresh reading ready and
+  // the next call comes back in milliseconds rather than seconds.
+  cameraAnalysis: (id: string) =>
+    request<CameraAnalysis>(`/v1/cameras/${encodeURIComponent(id)}/analysis`),
 
   lookupPlate: (plate: string) =>
     request<PlateLookup>("/v1/vehicles/lookup-rdw", {

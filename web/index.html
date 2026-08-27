@@ -188,6 +188,24 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
           </button>
         </header>
+        <!-- What the vision pipeline currently sees. A still rather than an overlay on
+             the player, because boxes drawn on top of a YouTube iframe would float over
+             whatever the operator happens to be showing, at whatever crop the player
+             chose, which is a picture that lies. This frame is the exact one measured. -->
+        <section class="cam-vision" id="cam-vision" hidden>
+          <header class="cam-vision-head">
+            <h3 class="cam-vision-title">What the camera sees now</h3>
+            <span id="cam-age" class="cam-age"></span>
+          </header>
+          <div class="cam-canvas">
+            <img id="cam-shot" alt="The most recent frame from this camera" />
+            <svg id="cam-overlay" class="cam-overlay" preserveAspectRatio="none"
+                 aria-hidden="true"></svg>
+          </div>
+          <p id="cam-spots" class="cam-spots"></p>
+          <p id="cam-caveat" class="cam-caveat"></p>
+        </section>
+
         <div class="cam-frame">
           <iframe
             id="cam-frame"

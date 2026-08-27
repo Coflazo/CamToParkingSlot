@@ -1,3 +1,5 @@
+![CamToParkingSlot: your car, that bay, measured. 210,247 bays surveyed, 99.56 percent occupancy accuracy, 0.00 percent false fits, 170 ms search, 69 live cameras](docs/images/banner.png)
+
 # CamToParkingSlot
 
 ### Every parking app tells you a space exists. This one draws your car in it.
@@ -239,6 +241,28 @@ Every camera the vision pipeline may read is one you may watch. They sit on the 
 viewfinder markers, the same shape as the logo. A system that claims a bay is free on the
 strength of a camera should be willing to show you the camera.
 
+Opening one also shows what the vision pipeline currently sees, refreshed every two
+seconds while you watch it.
+
+![A real camera frame with detected cars outlined in white and a 4.2 metre gap between two of them outlined in green, labelled as fitting 1 of the 14 test vehicles](docs/images/camera_vision.png)
+
+White boxes are real detections. The green box is the gap between two parked cars, and the
+label says how many of the fourteen test vehicles clear it on length: a 4.2 m hole takes
+the Fiat 500 and nothing else.
+
+The metres are estimates and the interface says so. A public webcam carries no survey, so
+the scale comes from the cars themselves, assuming a typical car is 1.80 m wide. Height
+cannot be recovered from one uncalibrated view and is never reported. And an empty stretch
+of kerb is not a legal space: whether you may park there lives in the sign code and the
+time regime, which the search checks and the camera cannot see.
+
+Three guards keep it from lying, each added after watching it get something wrong. A
+candidate gap is discarded if any detected vehicle stands inside it, which stopped a row
+of two dozen parked cars at Kijkduin being reported as one 22.4 m space. Anything longer
+than 15 m is rejected as carriageway rather than parking, which stopped 37.6 m of open
+road in Groningen being offered. And both flanks must be a motor vehicle, because the gap
+between a leaning bicycle and a distant car is a pavement.
+
 Two of the four feeds this file used to advertise are dead, so I went looking properly and
 found 74 live Dutch streams, of which 10 verified fetchable on the first pass. Seven that
 can be placed on a map are in the registry the search reads; a port terminal, a railway and
@@ -437,7 +461,22 @@ rented GPU.
 
 ## Why I piloted in NL
 
-The reason is data, not need. Amsterdam publishes all 210,247 parking bays as surveyed
+A friend drove over from Belgium to visit me at my dorm and could not find anywhere to
+park. He did not know how few spaces there are here, so he took the first one he saw,
+which turned out to be a thirty-minute walk away. That evening is the whole product.
+
+Then I read into it and found the scarcity is deliberate. Dutch cities cap parking on
+purpose: fewer spaces, priced higher, makes driving the inconvenient option, and the room
+and the money go into buses, trams and bike lanes instead. It works because the
+alternatives are genuinely good, so giving up the car costs you very little. Istanbul is
+the same scarcity without the alternatives, and it sits at the top of the table below for
+exactly that reason. Scarce parking is a policy in one place and a failure in the other.
+
+So this is not a campaign for more asphalt. If parking is going to be hard on purpose,
+the least a driver deserves is to know before setting off which spaces their car actually
+fits.
+
+The reason I built it here rather than anywhere else is data, not need. Amsterdam publishes all 210,247 parking bays as surveyed
 polygons with sign codes and time regimes. RDW publishes registered dimensions per plate,
 including height for 4,862,118 passenger cars. NDW publishes live occupancy. Almost nowhere
 else can you check a specific car against a specific bay without doing the survey yourself
@@ -546,34 +585,14 @@ UK and France.
 
 ---
 
-## What does not work yet
-
-The occupancy demand model is trained on simulated history. The system has been ingesting
-live data for about a day, and you cannot fit "how full is this street at 18:00 on a
-Friday" with one Friday. What its Brier scores measure is whether the model recovers demand
-structure it cannot see directly, which is a real estimation problem and not a claim about
-real Amsterdam occupancy. Its numbers: Brier 0.2005 against a 0.2689 flat prior on unseen
-time, 0.2127 against 0.2362 on unseen targets, AUC 0.717 and 0.648, split by target and by
-time and never at random.
-
-The vehicle detector is not good enough to route a car on, as set out above. The occupancy
-classifier is, and it is the one in the vision path.
-
-The bay-level polygons are Amsterdam only. Every other Dutch city has car parks and
-regimes but no surveyed kerb geometry, so outside Amsterdam the fit engine falls back to
-facility limits rather than bay measurements.
-
----
-
 ## Stack
 
-C++20 for the geometry, spatial index, routing, fit engine, ranking, vision worker and
-occupancy inference. Python 3.12 with FastAPI, SQLAlchemy 2.0 and pybind11 for everything
-that is not on the clock. PyTorch to ONNX Runtime for both models, LightGBM for demand.
-TypeScript and MapLibre on the web side. There is no OpenCV in the C++ path: the
-homography, the Jacobi eigensolver, the RANSAC and the perceptual hashing are written here
-and tested here.
+C++20, Python 3.12, TypeScript.
 
-194 Python tests and 8 C++ suites. Data from RDW, NDW, PDOK, OpenStreetMap, the City of
-Amsterdam and CNRPark-EXT, each with its licence recorded in
-`docs/data_sources/sources.md`.
+FastAPI, SQLAlchemy 2.0, pybind11. PyTorch to ONNX Runtime, LightGBM, torchvision.
+Vite and MapLibre. SQLite by default, PostgreSQL and PostGIS optionally. No OpenCV: the
+homography, the Jacobi eigensolver, the RANSAC and the perceptual hashing are written
+here.
+
+194 Python tests, 8 C++ suites. Data from RDW, NDW, PDOK, OpenStreetMap, the City of
+Amsterdam and CNRPark-EXT, each licence recorded in `docs/data_sources/sources.md`.

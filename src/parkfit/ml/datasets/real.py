@@ -69,6 +69,11 @@ class LabelledFrame:
         return self.path.stem.rsplit("_", 2)[0]
 
 
+#: Constructing a Faster R-CNN and moving it to the GPU takes several seconds, and the
+#: live camera watcher calls this every second. One instance per device is kept.
+_teacher_cache: dict[str, tuple] = {}
+
+
 def load_teacher(device: str = "cuda"):
     """The COCO-pretrained detector used to label real frames.
 
@@ -85,10 +90,15 @@ def load_teacher(device: str = "cuda"):
         log.warning("CUDA was asked for but is not available, labelling on CPU instead")
         device = "cpu"
 
+    cached = _teacher_cache.get(device)
+    if cached is not None:
+        return cached
+
     weights = FasterRCNN_ResNet50_FPN_V2_Weights.COCO_V1
     model = fasterrcnn_resnet50_fpn_v2(weights=weights, box_score_thresh=TEACHER_SCORE_THRESHOLD)
     model.eval().to(device)
-    return model, weights.meta["categories"], device
+    _teacher_cache[device] = (model, weights.meta["categories"], device)
+    return _teacher_cache[device]
 
 
 def label_frames(

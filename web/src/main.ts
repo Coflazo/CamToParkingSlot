@@ -10,6 +10,7 @@
 import "./style.css";
 import { ApiError, api, getToken, setToken, streamAvailability } from "./api";
 import type {
+  CameraAnalysis,
   GeocodeResult,
   PublicCamera,
   Recommendation,
@@ -719,6 +720,126 @@ const camOperator = el<HTMLParagraphElement>("cam-operator");
 const camNote = el<HTMLParagraphElement>("cam-note");
 const camWatch = el<HTMLAnchorElement>("cam-watch");
 
+const camVision = el<HTMLElement>("cam-vision");
+const camShot = el<HTMLImageElement>("cam-shot");
+const camOverlay = document.getElementById("cam-overlay") as unknown as SVGSVGElement;
+const camAge = el<HTMLSpanElement>("cam-age");
+const camSpots = el<HTMLParagraphElement>("cam-spots");
+const camCaveat = el<HTMLParagraphElement>("cam-caveat");
+
+let visionTimer: number | undefined;
+let visionCamera = "";
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function svg(name: string, attrs: Record<string, string>): SVGElement {
+  const node = document.createElementNS(SVG_NS, name);
+  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+  return node;
+}
+
+/** Draw the detections and the gaps over the still, in the frame's own coordinates. */
+function drawVision(analysis: CameraAnalysis): void {
+  camShot.src = analysis.frame_data_uri;
+  camOverlay.setAttribute("viewBox", `0 0 ${analysis.frame_width} ${analysis.frame_height}`);
+  camOverlay.replaceChildren();
+
+  // Vehicles first and faintly. They are context for the gaps rather than the answer,
+  // and drawing them as loudly as the free space would bury it.
+  for (const vehicle of analysis.vehicles) {
+    camOverlay.appendChild(
+      svg("rect", {
+        class: "ov-vehicle",
+        x: String(vehicle.x1),
+        y: String(vehicle.y1),
+        width: String(vehicle.x2 - vehicle.x1),
+        height: String(vehicle.y2 - vehicle.y1),
+      }),
+    );
+  }
+
+  for (const space of analysis.free_spaces) {
+    const width = space.x2 - space.x1;
+    const height = space.y2 - space.y1;
+    camOverlay.appendChild(
+      svg("rect", {
+        class: "ov-space",
+        x: String(space.x1),
+        y: String(space.y1),
+        width: String(width),
+        height: String(height),
+        rx: "4",
+      }),
+    );
+
+    // The label sits above the box, or inside it when the box is near the top edge,
+    // so it never gets clipped off the frame.
+    const label = svg("text", {
+      class: "ov-label",
+      x: String(space.x1 + width / 2),
+      y: String(space.y1 > 34 ? space.y1 - 10 : space.y1 + height / 2),
+      "text-anchor": "middle",
+    });
+    label.textContent = `~${space.length_m} m  |  fits ${space.fits.length} of 14`;
+    camOverlay.appendChild(label);
+  }
+
+  const spaces = analysis.free_spaces.length;
+  camSpots.textContent =
+    spaces === 0
+      ? `No kerb gap long enough for a car. ${analysis.vehicles.length} vehicles in view.`
+      : `${spaces} space${spaces === 1 ? "" : "s"} a car would fit, from ` +
+        `${analysis.vehicles.length} vehicles in view.`;
+
+  camAge.textContent =
+    analysis.age_seconds < 0 ? "" : `${analysis.age_seconds.toFixed(0)}s ago`;
+  camCaveat.textContent = analysis.note;
+  camVision.hidden = false;
+}
+
+/** Poll the analysis while a camera is open. */
+async function refreshVision(cameraId: string): Promise<void> {
+  try {
+    const analysis = await api.cameraAnalysis(cameraId);
+    if (visionCamera !== cameraId) return; // the panel moved on while we waited
+    if (analysis.ok) {
+      drawVision(analysis);
+    } else {
+      camVision.hidden = false;
+      camOverlay.replaceChildren();
+      camShot.removeAttribute("src");
+      camSpots.textContent = analysis.reason || "No reading from this camera.";
+      camAge.textContent = "";
+      camCaveat.textContent = "";
+    }
+  } catch {
+    // The live player is the point; a missing analysis should not take the panel down.
+  }
+}
+
+function startVision(cameraId: string): void {
+  visionCamera = cameraId;
+  camVision.hidden = true;
+  camOverlay.replaceChildren();
+  camShot.removeAttribute("src");
+  camSpots.textContent = "Reading the camera...";
+  camAge.textContent = "";
+  camCaveat.textContent = "";
+  camVision.hidden = false;
+
+  void refreshVision(cameraId);
+  // Two seconds. These feeds emit one segment every five, so polling faster only
+  // re-reads a picture already on screen; polling slower makes a driver watch a space
+  // that has already gone.
+  visionTimer = window.setInterval(() => void refreshVision(cameraId), 2000);
+}
+
+function stopVision(): void {
+  window.clearInterval(visionTimer);
+  visionTimer = undefined;
+  visionCamera = "";
+}
+
 function openCamera(camera: PublicCamera, disclaimer: string): void {
   camTitle.textContent = camera.name;
   camOperator.textContent = `Published by ${camera.operator}`;
@@ -729,6 +850,7 @@ function openCamera(camera: PublicCamera, disclaimer: string): void {
   camFrame.src = camera.embed_url;
   camSheet.hidden = false;
   document.body.classList.add("has-overlay");
+  startVision(camera.camera_id);
 }
 
 function closeCamera(): void {
@@ -737,6 +859,7 @@ function closeCamera(): void {
   // iframe would quietly load this very page inside itself. The point is to stop the
   // stream, not to start a second copy of the app.
   camFrame.src = "about:blank";
+  stopVision();
   document.body.classList.remove("has-overlay");
 }
 

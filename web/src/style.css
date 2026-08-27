@@ -2367,3 +2367,107 @@ body.has-overlay {
     margin-bottom: 1.5rem;
   }
 }
+
+/* ===========================================================================
+   WHAT THE CAMERA SEES
+   ===========================================================================
+   A measured still with the detections drawn on it, above the live player. Not an
+   overlay on the player itself: boxes floating over a YouTube iframe would sit over
+   whatever the operator is showing at whatever crop the player chose, which is a
+   picture that lies. This frame is the exact one that was measured.
+=========================================================================== */
+.cam-vision {
+  margin-bottom: 1rem;
+}
+
+.cam-vision-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.6rem;
+}
+
+.cam-vision-title {
+  margin: 0;
+  font-size: var(--step-0);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+/* Tabular figures so a counter ticking 2s, 3s, 4s does not shuffle the layout. */
+.cam-age {
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: var(--step--1);
+  font-variant-numeric: tabular-nums;
+}
+
+.cam-canvas {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+}
+
+.cam-canvas img,
+.cam-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.cam-canvas img {
+  object-fit: cover;
+}
+
+.cam-overlay {
+  pointer-events: none;
+}
+
+/* Vehicles are context for the gaps rather than the answer, so they are drawn quietly.
+   vector-effect keeps the stroke one pixel wide however the viewBox is scaled. */
+.ov-vehicle {
+  fill: none;
+  stroke: rgb(255 255 255 / 55%);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+/* The gap is the answer. Green because it is the one place in this interface where a
+   colour means "you can", and it is filled as well as outlined so it reads at a glance
+   against a busy street. */
+.ov-space {
+  fill: rgb(26 127 55 / 26%);
+  stroke: #2ea043;
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.ov-label {
+  fill: #ffffff;
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: rgb(10 10 10 / 85%);
+  stroke-width: 4;
+  stroke-linejoin: round;
+}
+
+.cam-spots {
+  margin: 0.7rem 0 0;
+  font-size: var(--step-0);
+  font-weight: 500;
+}
+
+.cam-caveat {
+  margin: 0.35rem 0 0;
+  color: var(--text-faint);
+  font-size: var(--step--1);
+  line-height: 1.5;
+}
