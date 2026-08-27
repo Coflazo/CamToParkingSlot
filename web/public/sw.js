@@ -1,4 +1,4 @@
-/* ParkFit NL service worker.
+/* CamToParkingSlot service worker.
  *
  * Caches the shell so the app opens without a network, which matters in an
  * underground car park. Search responses are deliberately NOT cached: a parking
