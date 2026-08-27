@@ -46,6 +46,12 @@ app.add_typer(cameras_app, name="cameras")
 app.add_typer(predict_app, name="predict")
 app.add_typer(detect_app, name="detect")
 
+occupancy_app = typer.Typer(
+    help="Bay occupancy: is this known parking space occupied right now?",
+    no_args_is_help=True,
+)
+app.add_typer(occupancy_app, name="occupancy")
+
 console = Console()
 
 
@@ -723,6 +729,82 @@ def predict_all(
         from_observations=False,
     )
     predict_train(source="synthetic-history", trees=400, threads=4, out="data/models/occupancy.lgb")
+
+
+@occupancy_app.command("stats")
+def occupancy_stats(
+    root: str = typer.Option("data/parking_ds"),
+) -> None:
+    """Describe the CNRPark-EXT splits actually present on disk."""
+    import pathlib as _pathlib
+
+    from parkfit.ml.datasets import occupancy as occ
+
+    _setup_logging(verbose=False)
+    base = _pathlib.Path(root)
+    splits, patches = base / "splits" / "CNRPark-EXT", base / "PATCHES"
+    if not splits.exists():
+        console.print(f"[yellow]no CNRPark-EXT under {root}[/yellow]")
+        raise typer.Exit(code=1)
+
+    table = Table(title="CNRPark-EXT")
+    for column in ("split", "patches", "occupied", "free", "cameras", "days", "weather"):
+        table.add_column(column, justify="right" if column != "split" else "left")
+    for name in ("train", "val", "test"):
+        described = occ.describe(occ.read_split(splits / f"{name}.txt", patches))
+        table.add_row(
+            name,
+            f"{described['patches']:,}",
+            f"{described['occupied']:,}",
+            f"{described['free']:,}",
+            str(len(described["cameras"])),
+            str(described["days"]),
+            ", ".join(described["weather"]),
+        )
+    console.print(table)
+
+
+@occupancy_app.command("train")
+def occupancy_train(
+    root: str = typer.Option("data/parking_ds"),
+    protocol: str = typer.Option("official", help="official, camera or weather."),
+    holdout: str = typer.Option("", help="Comma-separated cameras or weather to hold out."),
+    epochs: int = typer.Option(6),
+    batch: int = typer.Option(256),
+    workers: int = typer.Option(4),
+    device: str = typer.Option("cuda"),
+    out: str = typer.Option("data/models/occupancy_cnn.pt"),
+    report_path: str = typer.Option("docs/architecture/occupancy_cnn.json"),
+) -> None:
+    """Train the occupancy classifier on real parking-space crops."""
+    import pathlib as _pathlib
+
+    from parkfit.ml.train import occupancy_cnn
+
+    _setup_logging(verbose=True)
+    report = occupancy_cnn.train(
+        _pathlib.Path(root),
+        protocol=protocol,
+        holdout={h.strip() for h in holdout.split(",") if h.strip()} or None,
+        epochs=epochs,
+        batch_size=batch,
+        workers=workers,
+        device=device,
+        weights_path=_pathlib.Path(out),
+    )
+    if not report.trained:
+        console.print(f"[yellow]{report.describe()}[/yellow]")
+        raise typer.Exit(code=1)
+
+    console.print(f"[green]{report.describe()}[/green]")
+    if report.per_weather:
+        table = Table(title="accuracy by weather, held-out set")
+        table.add_column("weather")
+        table.add_column("accuracy", justify="right")
+        for name, value in report.per_weather.items():
+            table.add_row(name, f"{value:.4f}")
+        console.print(table)
+    occupancy_cnn.write_report(report, _pathlib.Path(report_path))
 
 
 @detect_app.command("dataset")

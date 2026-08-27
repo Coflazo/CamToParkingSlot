@@ -1,0 +1,41 @@
+{
+  "trained": true,
+  "reason": "",
+  "device": "cuda",
+  "protocol": "camera",
+  "epochs": 6,
+  "parameters": 1519906,
+  "train_patches": 97157,
+  "test_patches": 37048,
+  "holdout": [
+    "camera8",
+    "camera9"
+  ],
+  "losses": [
+    0.12747,
+    0.06993,
+    0.06375,
+    0.06083,
+    0.05857,
+    0.05793
+  ],
+  "accuracy": 0.9956003023105161,
+  "precision": 0.9948654653172057,
+  "recall": 0.9970806531420089,
+  "f1": 0.9959718275052516,
+  "auc": 0.9989305897765821,
+  "false_free_rate": 0.002276100940128649,
+  "threshold": 0.24000000000000005,
+  "accuracy_at_threshold": 0.9950334700928525,
+  "per_weather": {
+    "overcast": 0.997,
+    "rainy": 0.9913,
+    "sunny": 0.9959
+  },
+  "per_camera": {
+    "camera8": 0.9974,
+    "camera9": 0.9906
+  },
+  "peak_vram_mb": 824.35595703125,
+  "weights_path": "data\\models\\occupancy_cnn_camera.pt"
+}
