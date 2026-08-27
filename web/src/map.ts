@@ -11,6 +11,8 @@
  */
 
 import maplibregl, { type LngLatLike, type Map as MapLibreMap, Marker, Popup } from "maplibre-gl";
+
+import type { PublicCamera } from "./api";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Recommendation } from "./api";
 
@@ -52,6 +54,10 @@ const STYLE: maplibregl.StyleSpecification = {
 export class ParkingMap {
   private map: MapLibreMap;
   private markers: Marker[] = [];
+  // Cameras are not results and must not be cleared with them. They stay put across
+  // searches, because the reason to look at one is often "what is that street like
+  // right now", which has nothing to do with the query that is currently on screen.
+  private cameraMarkers: Marker[] = [];
   private destinationMarker: Marker | null = null;
   private ready = false;
   private pending: (() => void)[] = [];
@@ -179,6 +185,33 @@ export class ParkingMap {
   focus(result: Recommendation): void {
     this.map.easeTo({ center: [result.lon, result.lat], zoom: 16, duration: 500 });
     this.showRoutes(result);
+  }
+
+  /** Plot every watchable camera. The glyph is the brand mark: a viewfinder. */
+  showCameras(cameras: PublicCamera[], onOpen: (camera: PublicCamera) => void): void {
+    for (const marker of this.cameraMarkers) marker.remove();
+    this.cameraMarkers = [];
+
+    for (const camera of cameras) {
+      const element = document.createElement("button");
+      element.type = "button";
+      element.className = "map-cam";
+      element.title = `${camera.name} (${camera.operator})`;
+      element.setAttribute("aria-label", `Open live camera: ${camera.name}`);
+      element.innerHTML =
+        `<svg viewBox="0 0 24 24" aria-hidden="true">` +
+        `<path d="M4 9V6.5A2.5 2.5 0 0 1 6.5 4H9"/><path d="M15 4h2.5A2.5 2.5 0 0 1 20 6.5V9"/>` +
+        `<path d="M20 15v2.5a2.5 2.5 0 0 1-2.5 2.5H15"/><path d="M9 20H6.5A2.5 2.5 0 0 1 4 17.5V15"/>` +
+        `</svg>`;
+      element.addEventListener("click", (event) => {
+        event.stopPropagation();
+        onOpen(camera);
+      });
+
+      this.cameraMarkers.push(
+        new Marker({ element }).setLngLat([camera.lon, camera.lat]).addTo(this.map),
+      );
+    }
   }
 
   private clearMarkers(): void {

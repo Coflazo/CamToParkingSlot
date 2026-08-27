@@ -1295,6 +1295,20 @@ button:focus-visible {
   width: min(37rem, 92vw);
   margin-left: clamp(1rem, 6vw, 5.5rem);
   padding-bottom: 6rem;
+  /* The rail floats over the map and is mostly empty space. Left solid it swallows
+     every click aimed at the city underneath, so a camera marker sitting behind the
+     headline simply cannot be opened. Only the rail's actual children take clicks. */
+  pointer-events: none;
+}
+
+.stage-rail > * {
+  pointer-events: auto;
+}
+
+/* The opening statement is display text with nothing to click in it, and it covers
+   the largest area of all. It never takes a click. */
+.intro {
+  pointer-events: none;
 }
 
 /* --------------------------------------------------------------- the intro */
@@ -1939,5 +1953,182 @@ button:focus-visible {
 
   #app[data-view="results"] .stage-map::after {
     background: linear-gradient(96deg, var(--bg) 10%, rgb(var(--bg-rgb) / 58%) 32%, rgb(var(--bg-rgb) / 0%) 60%);
+  }
+}
+
+/* ===========================================================================
+   LIVE CAMERAS
+   ===========================================================================
+   Every camera the vision pipeline may read is one the user may watch. The marker
+   is the brand mark itself, a viewfinder, which is the one place in the interface
+   where reusing the logo as an icon is literal rather than decorative.
+=========================================================================== */
+.map-cam {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: rgb(var(--raised-rgb) / 92%);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition:
+    transform 0.34s var(--ease-out),
+    border-color 0.34s var(--ease-out);
+}
+
+.map-cam svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+.map-cam:hover,
+.map-cam:focus-visible {
+  border-color: var(--text);
+  transform: scale(1.14);
+}
+
+.cam-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  background: rgb(var(--bg-rgb) / 72%);
+  backdrop-filter: blur(8px);
+}
+
+.cam-sheet[hidden] {
+  display: none;
+}
+
+.cam-panel {
+  width: min(56rem, 100%);
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: 1.35rem 1.4rem 1.15rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-lift);
+}
+
+.cam-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.cam-eyebrow {
+  margin: 0 0 0.3rem;
+  color: var(--text-faint);
+  font-size: var(--step--1);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.cam-title {
+  margin: 0;
+  font-size: var(--step-2);
+  letter-spacing: -0.03em;
+}
+
+.cam-operator {
+  margin: 0.25rem 0 0;
+  color: var(--text-muted);
+  font-size: var(--step--1);
+}
+
+.cam-close {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: none;
+  cursor: pointer;
+}
+
+.cam-close svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.cam-close:hover {
+  border-color: var(--border-strong);
+}
+
+/* 16:9 held by aspect-ratio rather than padding, so the panel reserves the right
+   space before the iframe loads and nothing jumps. */
+.cam-frame {
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+}
+
+.cam-frame iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
+.cam-note {
+  margin: 0.85rem 0 0;
+  color: var(--text-muted);
+  font-size: var(--step--1);
+  line-height: 1.55;
+}
+
+.cam-actions {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+/* The map still pans behind an open overlay otherwise, which reads as the page
+   having lost the click rather than as a panel being open. */
+body.has-overlay {
+  overflow: hidden;
+}
+
+@media (max-width: 34rem) {
+  .cam-sheet {
+    padding: 0;
+    place-items: end stretch;
+  }
+
+  .cam-panel {
+    width: 100%;
+    max-height: 88vh;
+    border-radius: 18px 18px 0 0;
+    border-bottom: none;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+
+  .cam-actions {
+    flex-direction: column-reverse;
+  }
+
+  .cam-actions .button {
+    justify-content: center;
   }
 }

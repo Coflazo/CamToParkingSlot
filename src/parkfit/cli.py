@@ -776,6 +776,115 @@ def detect_train(
     console.print(table)
 
 
+@detect_app.command("harvest")
+def detect_harvest(
+    frames: int = typer.Option(22, help="Frames per camera."),
+    spacing: float = typer.Option(5.0, help="Seconds between frames."),
+    out: str = typer.Option("data/real/frames", help="Where the frames land."),
+) -> None:
+    """Pull real frames from every live public camera.
+
+    A feed that is offline is skipped rather than fatal, because these are other
+    people's cameras and they go down without telling us.
+    """
+    import pathlib as _pathlib
+
+    from parkfit.cameras import harvest as harvester
+
+    _setup_logging(verbose=True)
+    got = harvester.harvest_all(
+        _pathlib.Path(out), frames_per_camera=frames, spacing_seconds=spacing
+    )
+    table = Table(title="harvested real frames")
+    table.add_column("camera")
+    table.add_column("frames", justify="right")
+    for camera_id, paths in sorted(got.items()):
+        table.add_row(camera_id, str(len(paths)))
+    console.print(table)
+    total = sum(len(v) for v in got.values())
+    console.print(f"[green]{total} real frames in {out}[/green]")
+
+
+@detect_app.command("label")
+def detect_label(
+    frames: str = typer.Option("data/real/frames", help="Directory of harvested frames."),
+    out: str = typer.Option("data/real/labels.json"),
+    device: str = typer.Option("cuda", help="cuda or cpu."),
+) -> None:
+    """Label real frames with the COCO-pretrained teacher.
+
+    These are pseudo-labels, not ground truth. The teacher has seen real photographs,
+    which is the whole point, but it is wrong sometimes and the student inherits that.
+    """
+    import pathlib as _pathlib
+
+    from parkfit.ml.datasets import real as real_ds
+
+    _setup_logging(verbose=True)
+    paths = sorted(_pathlib.Path(frames).glob("*.jpg"))
+    if not paths:
+        console.print(f"[yellow]no frames in {frames}; run `pf detect harvest` first[/yellow]")
+        raise typer.Exit(code=1)
+
+    labelled = real_ds.label_frames(paths, device=device)
+    written = real_ds.write_labels(labelled, _pathlib.Path(out))
+    boxes = sum(len(item.boxes) for item in labelled)
+    from collections import Counter
+
+    counts: Counter[str] = Counter()
+    for item in labelled:
+        for box in item.boxes:
+            counts[real_ds.scenes.CLASS_NAMES[box["class"]]] += 1
+
+    table = Table(title="teacher labels on real frames")
+    table.add_column("class")
+    table.add_column("instances", justify="right")
+    for name, count in counts.most_common():
+        table.add_row(name, str(count))
+    console.print(table)
+    console.print(f"[green]{boxes} boxes over {len(labelled)} frames -> {written}[/green]")
+
+
+@detect_app.command("train-real")
+def detect_train_real(
+    labels: str = typer.Option("data/real/labels.json"),
+    epochs: int = typer.Option(40),
+    batch: int = typer.Option(8),
+    holdout: str = typer.Option("", help="Comma-separated camera ids to hold out."),
+    device: str = typer.Option("cuda"),
+    out: str = typer.Option("data/models/detector_real.pt"),
+    report_path: str = typer.Option("docs/architecture/detector_real.json"),
+) -> None:
+    """Train the detector on real frames and score it on cameras it has never seen."""
+    import pathlib as _pathlib
+
+    from parkfit.ml.train import real_detector
+
+    _setup_logging(verbose=True)
+    holdout_set = {c.strip() for c in holdout.split(",") if c.strip()} or None
+    report = real_detector.train_real(
+        _pathlib.Path(labels),
+        holdout_cameras=holdout_set,
+        epochs=epochs,
+        batch_size=batch,
+        device=device,
+        weights_path=_pathlib.Path(out),
+    )
+    if not report.trained:
+        console.print(f"[yellow]{report.describe()}[/yellow]")
+        raise typer.Exit(code=1)
+
+    console.print(f"[green]{report.describe()}[/green]")
+    if report.per_class:
+        table = Table(title="recall by class, unseen cameras")
+        table.add_column("class")
+        table.add_column("recall", justify="right")
+        for name, value in report.per_class.items():
+            table.add_row(name, f"{value:.3f}")
+        console.print(table)
+    real_detector.write_report(report, _pathlib.Path(report_path))
+
+
 @detect_app.command("export")
 def detect_export(
     weights: str = typer.Option("data/models/detector.pt"),

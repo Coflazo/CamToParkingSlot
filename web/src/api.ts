@@ -223,6 +223,25 @@ export interface SearchParams {
   needsDisabledBay?: boolean;
 }
 
+
+/** A camera whose operator publishes it, and which the user may therefore watch. */
+export interface PublicCamera {
+  camera_id: string;
+  name: string;
+  operator: string;
+  lat: number;
+  lon: number;
+  embed_url: string;
+  watch_url: string;
+  note: string;
+}
+
+export interface CameraList {
+  cameras: PublicCamera[];
+  count: number;
+  disclaimer: string;
+}
+
 export const api = {
   health: () => request<HealthResponse>("/health"),
 
@@ -262,6 +281,10 @@ export const api = {
     }),
 
   vehicles: () => request<Vehicle[]>("/v1/vehicles"),
+
+  // Unauthenticated on purpose: these feeds are public already, and needing an
+  // account to look at a public webcam would be theatre.
+  cameras: () => request<CameraList>("/v1/cameras"),
 
   lookupPlate: (plate: string) =>
     request<PlateLookup>("/v1/vehicles/lookup-rdw", {

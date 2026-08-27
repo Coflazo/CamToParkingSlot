@@ -632,3 +632,140 @@ def grid_of_scenes(
 
     fig.tight_layout()
     return save(fig, out_dir, "scene_grid")
+
+
+# --------------------------------------------------------------------------- detection
+#: One hue per vehicle class, in CLASS_NAMES order. Identity, so the order is fixed and
+#: never cycled: a seventh class would take slot 7, not a generated colour.
+CLASS_HUES = (
+    SERIES[0],  # car
+    SERIES[1],  # van
+    SERIES[2],  # truck
+    SERIES[3],  # bus
+    SERIES[4],  # motorcycle
+    "#8a5cd6",  # bicycle
+    "#6b7280",  # trailer
+)
+
+
+def draw_detections(
+    frame_path,
+    boxes,
+    *,
+    title: str = "",
+    subtitle: str = "",
+    out_dir=None,
+    name: str = "detections",
+    class_names=None,
+):
+    """Draw boxes over a real camera frame.
+
+    Labels are drawn only when there is room for them. A frame with forty vehicles in it
+    turns into a wall of text otherwise, and the point of the picture is whether the boxes
+    land on the cars, which text on top of the cars actively hides.
+    """
+    from PIL import Image
+
+    plt = _plt()
+    if class_names is None:
+        from parkfit.ml.datasets.scenes import CLASS_NAMES
+
+        class_names = CLASS_NAMES
+
+    with Image.open(frame_path) as handle:
+        image = np.asarray(handle.convert("RGB"))
+    height, width = image.shape[:2]
+
+    fig, ax = plt.subplots(figsize=(11, 11 * height / width))
+    ax.imshow(image)
+    ax.set_xlim(0, width)
+    ax.set_ylim(height, 0)
+    ax.axis("off")
+
+    # Boxes are in model-input coordinates; the frame is at its native size.
+    from parkfit.ml.datasets.scenes import INPUT_HEIGHT, INPUT_WIDTH
+
+    sx, sy = width / float(INPUT_WIDTH), height / float(INPUT_HEIGHT)
+
+    for box in sorted(boxes, key=lambda b: -(b.get("score", 1.0))):
+        x1, y1 = box["x1"] * sx, box["y1"] * sy
+        x2, y2 = box["x2"] * sx, box["y2"] * sy
+        hue = CLASS_HUES[box["class"] % len(CLASS_HUES)]
+        ax.add_patch(
+            plt.Rectangle(
+                (x1, y1),
+                x2 - x1,
+                y2 - y1,
+                fill=False,
+                edgecolor=hue,
+                linewidth=2.0,
+                zorder=3,
+            )
+        )
+        if (x2 - x1) > width * 0.045:
+            ax.text(
+                x1,
+                max(y1 - 4, 10),
+                class_names[box["class"]],
+                color="#ffffff",
+                fontsize=8,
+                fontweight="bold",
+                zorder=4,
+                bbox={"facecolor": hue, "edgecolor": "none", "pad": 1.4},
+            )
+
+    if title:
+        ax.set_title(title, color=INK, fontsize=13, fontweight="bold", loc="left", pad=10)
+    if subtitle:
+        ax.text(
+            0,
+            -0.015,
+            subtitle,
+            transform=ax.transAxes,
+            color=INK_SOFT,
+            fontsize=10,
+            va="top",
+            ha="left",
+        )
+    return save(fig, out_dir, name)
+
+
+def training_curve(losses, *, out_dir=None, name: str = "training_curve"):
+    """Loss per epoch. Log y, because the first epoch dwarfs the rest on a linear scale."""
+    plt = _plt()
+    fig, ax = plt.subplots(figsize=(7.5, 3.6))
+    epochs = np.arange(1, len(losses) + 1)
+    ax.plot(epochs, losses, color=SERIES[0], linewidth=2, zorder=3)
+    ax.set_yscale("log")
+    style(ax, title="Training loss on real frames", xlabel="epoch", ylabel="loss (log)")
+    ax.annotate(
+        f"final {losses[-1]:.3f}",
+        xy=(epochs[-1], losses[-1]),
+        xytext=(-8, 14),
+        textcoords="offset points",
+        color=INK,
+        fontsize=9,
+        fontweight="bold",
+        ha="right",
+    )
+    return save(fig, out_dir, name)
+
+
+def class_recall(per_class: dict, *, out_dir=None, name: str = "class_recall"):
+    """Recall per class on held-out cameras, with the count each rate is computed over."""
+    plt = _plt()
+    items = sorted(per_class.items(), key=lambda kv: -kv[1])
+    labels = [k for k, _ in items]
+    values = [v for _, v in items]
+
+    fig, ax = plt.subplots(figsize=(7.5, 0.55 * len(labels) + 1.6))
+    positions = np.arange(len(labels))
+    ax.barh(positions, values, height=0.55, color=SERIES[0], zorder=3)
+    ax.set_yticks(positions)
+    ax.set_yticklabels(labels, color=INK_SOFT, fontsize=10)
+    ax.invert_yaxis()
+    ax.set_xlim(0, 1)
+    style(ax, title="Recall by class, cameras never seen in training", xlabel="recall")
+    for y, value in zip(positions, values, strict=True):
+        ax.text(value + 0.015, y, f"{value:.2f}", va="center", color=INK, fontsize=9)
+    return save(fig, out_dir, name)

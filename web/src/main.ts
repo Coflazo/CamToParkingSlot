@@ -9,7 +9,13 @@
 
 import "./style.css";
 import { ApiError, api, getToken, setToken, streamAvailability } from "./api";
-import type { GeocodeResult, Recommendation, SearchResponse, Vehicle } from "./api";
+import type {
+  GeocodeResult,
+  PublicCamera,
+  Recommendation,
+  SearchResponse,
+  Vehicle,
+} from "./api";
 import { ParkingMap, escapeHtml } from "./map";
 import * as navigate from "./navigate";
 import * as fitdiagram from "./fitdiagram";
@@ -648,6 +654,55 @@ navigator.geolocation?.getCurrentPosition(
 
 startSmoothScroll();
 void refreshHealth();
+// ------------------------------------------------------------- live cameras
+const camSheet = el<HTMLDivElement>("cam-sheet");
+const camFrame = el<HTMLIFrameElement>("cam-frame");
+const camTitle = el<HTMLHeadingElement>("cam-title");
+const camOperator = el<HTMLParagraphElement>("cam-operator");
+const camNote = el<HTMLParagraphElement>("cam-note");
+const camWatch = el<HTMLAnchorElement>("cam-watch");
+
+function openCamera(camera: PublicCamera, disclaimer: string): void {
+  camTitle.textContent = camera.name;
+  camOperator.textContent = `Published by ${camera.operator}`;
+  camNote.textContent = `${camera.note}. ${disclaimer}`;
+  camWatch.href = camera.watch_url;
+  // src is set on open and cleared on close rather than left in place, so a closed
+  // panel is not quietly holding a video stream open in the background.
+  camFrame.src = camera.embed_url;
+  camSheet.hidden = false;
+  document.body.classList.add("has-overlay");
+}
+
+function closeCamera(): void {
+  camSheet.hidden = true;
+  // about:blank rather than "": an empty src resolves against the document URL, so the
+  // iframe would quietly load this very page inside itself. The point is to stop the
+  // stream, not to start a second copy of the app.
+  camFrame.src = "about:blank";
+  document.body.classList.remove("has-overlay");
+}
+
+el<HTMLButtonElement>("cam-close").addEventListener("click", closeCamera);
+el<HTMLButtonElement>("cam-close-2").addEventListener("click", closeCamera);
+camSheet.addEventListener("click", (event) => {
+  if (event.target === camSheet) closeCamera();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !camSheet.hidden) closeCamera();
+});
+
+async function loadCameras(): Promise<void> {
+  try {
+    const { cameras, disclaimer } = await api.cameras();
+    map.showCameras(cameras, (camera) => openCamera(camera, disclaimer));
+  } catch {
+    // A missing camera list is not worth a visible error: the map and the search both
+    // work without it, and the user did not ask for cameras.
+  }
+}
+
+void loadCameras();
 void loadVehicles();
 window.setInterval(() => void refreshHealth(), 60000);
 

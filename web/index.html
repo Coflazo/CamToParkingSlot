@@ -173,6 +173,40 @@
       </main>
     </div>
 
+    <!-- The live camera viewer. Every camera the pipeline is allowed to read is a camera
+         the user is allowed to watch: a system that claims a bay is free on the strength
+         of a camera should be willing to show you the camera. -->
+    <div id="cam-sheet" class="cam-sheet" hidden>
+      <div class="cam-panel" role="dialog" aria-modal="true" aria-labelledby="cam-title">
+        <header class="cam-head">
+          <div>
+            <p class="cam-eyebrow">Live camera</p>
+            <h2 id="cam-title" class="cam-title"></h2>
+            <p id="cam-operator" class="cam-operator"></p>
+          </div>
+          <button id="cam-close" class="cam-close" type="button" aria-label="Close live camera">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </button>
+        </header>
+        <div class="cam-frame">
+          <iframe
+            id="cam-frame"
+            title="Live camera stream"
+            allow="encrypted-media; picture-in-picture"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allowfullscreen
+          ></iframe>
+        </div>
+        <p id="cam-note" class="cam-note"></p>
+        <footer class="cam-actions">
+          <a id="cam-watch" class="button button-ghost" target="_blank" rel="noopener noreferrer"
+            >Open on the operator's page</a
+          >
+          <button id="cam-close-2" class="button button-primary" type="button">Close</button>
+        </footer>
+      </div>
+    </div>
+
     <dialog id="vehicle-dialog" class="dialog">
       <form method="dialog" class="dialog-body">
         <h2>Your vehicles</h2>

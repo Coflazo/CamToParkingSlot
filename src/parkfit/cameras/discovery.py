@@ -227,6 +227,15 @@ def discover_locations(
 #: dev and refuses in production. Processing any of them in production still needs an
 #: attestation from whoever owns the camera.
 PUBLIC_FEEDS = (
+    # Verified live and fetchable on 2026-08-27. Two feeds that used to be listed here,
+    # Now4Rent's Dam Square and WebCam.NL's Zaanse Schans, now answer "This video is not
+    # available" and "We're experiencing technical difficulties", so they are gone rather
+    # than left in to inflate a count. Other people's cameras go down without telling us,
+    # which is why `pf cameras verify` re-checks rather than trusting this list.
+    #
+    # Coordinates for the entries added on 2026-08-27 are landmark-level, taken from the
+    # place each operator names in its own stream title. They are good enough to say
+    # "this camera is on Hofplein" and deliberately not called surveyed anywhere.
     {
         "camera_id": "yt_amsterdam_beursplein",
         "youtube_id": "43qH0tDA6lM",
@@ -246,23 +255,59 @@ PUBLIC_FEEDS = (
         "note": "Stationseiland forecourt, published live on YouTube",
     },
     {
-        "camera_id": "yt_amsterdam_dam",
-        "youtube_id": "Gd9d4q6WvUY",
-        "name": "Amsterdam Dam Square",
-        "operator": "Now4Rent.NL",
-        "lat": 52.3731,
-        "lon": 4.8926,
-        "note": "4K pan-tilt-zoom over the Dam, published live on YouTube",
+        "camera_id": "yt_amsterdam_vijfbruggen1",
+        "youtube_id": "2tgHBRFHMm8",
+        "name": "Amsterdam De Vijf Bruggen, camera 1",
+        "operator": "Amsterdam De Vijf Bruggen",
+        "lat": 52.3785,
+        "lon": 4.9000,
+        "note": "canal crossing by Amsterdam Centraal, landmark-level placement",
     },
     {
-        "camera_id": "yt_zaanse_schans",
-        "youtube_id": "o9MIV7sep5k",
-        "name": "Zaanse Schans",
-        "operator": "WebCam.NL",
-        "lat": 52.4741,
-        "lon": 4.8175,
-        "note": "ultraHD pan-tilt-zoom, published live on YouTube",
+        "camera_id": "yt_amsterdam_vijfbruggen2",
+        "youtube_id": "FHJH2yMe6Hw",
+        "name": "Amsterdam Centraal De Vijf Bruggen, camera 2",
+        "operator": "Amsterdam De Vijf Bruggen",
+        "lat": 52.3785,
+        "lon": 4.9000,
+        "note": "second angle on the same crossing, landmark-level placement",
     },
+    {
+        "camera_id": "yt_rotterdam_erasmusbrug",
+        "youtube_id": "nFozEhYTEMo",
+        "name": "Rotterdam Erasmusbrug / Kop van Zuid",
+        "operator": "Rotterdam live stream",
+        "lat": 51.9089,
+        "lon": 4.4870,
+        "note": "Erasmusbrug and cruise terminal, landmark-level placement",
+    },
+    {
+        "camera_id": "yt_rotterdam_erasmus_kpn",
+        "youtube_id": "gsViKzj7nuQ",
+        "name": "Rotterdam Erasmusbrug, KPN led wall",
+        "operator": "Rotterdam live stream",
+        "lat": 51.9089,
+        "lon": 4.4870,
+        "note": "second angle on the Erasmusbrug, landmark-level placement",
+    },
+    {
+        "camera_id": "yt_rotterdam_hofplein",
+        "youtube_id": "wHhs_Ef8LSU",
+        "name": "Rotterdam Hofplein",
+        "operator": "Rotterdam live stream",
+        "lat": 51.9244,
+        "lon": 4.4777,
+        "note": "Hofplein roundabout, landmark-level placement",
+    },
+)
+
+#: Live and fetchable, but nowhere near city parking: a port terminal and a railway.
+#: They are real training footage and useless as a "camera near your bay", so they are
+#: harvested from and deliberately kept out of the registry the search reads.
+TRAINING_ONLY_FEEDS = (
+    {"camera_id": "yt_nieuwe_waterweg", "youtube_id": "_pGIJmXxAHk", "name": "Nieuwe Waterweg"},
+    {"camera_id": "yt_amazonehaven", "youtube_id": "M09NaBVPjAI", "name": "Amazonehaven west"},
+    {"camera_id": "yt_railcam_nl", "youtube_id": "abaZ4GD5jbM", "name": "RailCam Netherlands"},
 )
 
 
