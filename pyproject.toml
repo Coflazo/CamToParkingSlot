@@ -47,6 +47,9 @@ notebooks = [
     "ipykernel>=6.29",
     "nbformat>=5.10",
 ]
+cameras = [
+    "yt-dlp>=2024.8",
+]
 
 [project.scripts]
 pf = "parkfit.cli:main"
