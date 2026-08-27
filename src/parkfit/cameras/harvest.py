@@ -81,6 +81,35 @@ def resolve_manifest(camera: LiveCamera, *, itag: str = DEFAULT_ITAG, timeout: f
     return url
 
 
+#: A resolved googlevideo manifest carries an expiry a few hours out, and resolving one
+#: costs about 2.6 seconds of yt-dlp start-up. Polling a live camera every few seconds
+#: would spend almost all of that time re-deriving a URL that has not changed, so the
+#: resolved manifest is kept and only re-resolved when it stops working.
+_MANIFEST_TTL_SECONDS = 3600.0
+_manifests: dict[str, tuple[float, str]] = {}
+
+
+def cached_manifest(camera: LiveCamera, *, force: bool = False) -> str:
+    """The manifest for this camera, resolved at most once an hour."""
+    now = time.time()
+    if not force:
+        entry = _manifests.get(camera.camera_id)
+        if entry is not None and now - entry[0] < _MANIFEST_TTL_SECONDS:
+            return entry[1]
+
+    manifest = resolve_manifest(camera)
+    if manifest:
+        _manifests[camera.camera_id] = (now, manifest)
+    else:
+        _manifests.pop(camera.camera_id, None)
+    return manifest
+
+
+def forget_manifest(camera_id: str) -> None:
+    """Drop a cached manifest, so the next call resolves a fresh one."""
+    _manifests.pop(camera_id, None)
+
+
 def _get(url: str, timeout: float) -> bytes:
     request = urllib.request.Request(url, headers={"User-Agent": _UA})
     with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -203,6 +232,47 @@ def harvest(
 
     scratch.unlink(missing_ok=True)
     return written
+
+
+def grab_latest_frame(camera: LiveCamera, out_path: Path) -> bool:
+    """One frame from the live edge, as fast as this camera allows.
+
+    The fast path for polling. `harvest` is built for collecting a training set and will
+    happily wait minutes to spread frames across an hour; this wants the newest picture
+    and wants it now, so it reuses the cached manifest and takes whatever segment the
+    playlist is currently advertising last.
+
+    A stale manifest is the one failure worth retrying inline: googlevideo URLs expire,
+    and the difference between "the camera is down" and "the URL aged out" matters to
+    whoever is watching.
+    """
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    scratch = out_path.with_suffix(".ts")
+
+    for attempt in (0, 1):
+        manifest = cached_manifest(camera, force=attempt == 1)
+        if not manifest:
+            return False
+
+        urls = segment_urls(manifest)
+        if not urls:
+            forget_manifest(camera.camera_id)
+            continue
+
+        try:
+            scratch.write_bytes(_get(urls[-1], 30.0))
+        except Exception as exc:
+            log.debug("%s: segment fetch failed: %s", camera.camera_id, exc)
+            forget_manifest(camera.camera_id)
+            continue
+
+        ok = _decode_frame(scratch, out_path)
+        scratch.unlink(missing_ok=True)
+        if ok:
+            return True
+
+    scratch.unlink(missing_ok=True)
+    return False
 
 
 def live_cameras() -> list[LiveCamera]:

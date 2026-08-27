@@ -124,6 +124,29 @@ except ImportError:  # pragma: no cover - admin router is optional
 app.include_router(v1)
 
 
+@app.on_event("startup")
+async def _start_camera_watcher() -> None:
+    """Keep watched cameras analysed in the background.
+
+    Started here rather than lazily so the first person to open a camera is not the one
+    who pays for loading the detector. It costs nothing while nobody is looking: the loop
+    only works on feeds somebody has opened in the last minute.
+    """
+    from parkfit.services import camera_analysis
+
+    try:
+        camera_analysis.start_watcher()
+    except Exception as exc:
+        log.warning("camera watcher not started: %s", exc)
+
+
+@app.on_event("shutdown")
+async def _stop_camera_watcher() -> None:
+    from parkfit.services import camera_analysis
+
+    camera_analysis.stop_watcher()
+
+
 @app.get("/health", response_model=HealthResponse, tags=["meta"])
 def health() -> HealthResponse:
     """Report what is actually loaded, not merely that the process is up."""

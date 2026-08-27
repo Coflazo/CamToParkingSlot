@@ -19,6 +19,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from parkfit.cameras.discovery import PUBLIC_FEEDS
+from parkfit.services import camera_analysis
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/cameras", tags=["cameras"])
@@ -38,6 +39,9 @@ class PublicCamera(BaseModel):
     #: The operator's own page, so the feed can be opened outside this product.
     watch_url: str
     note: str
+    #: Free spaces the last analysis of this feed found, or -1 if it has not run yet.
+    #: Never triggers one, so listing the cameras stays instant.
+    free_spaces_seen: int = -1
 
 
 class CameraList(BaseModel):
@@ -69,8 +73,95 @@ def _to_model(feed: dict) -> PublicCamera:
     )
 
 
+class DetectedBox(BaseModel):
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    label: str
+    score: float
+
+
+class FreeSpaceBox(BaseModel):
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    #: Estimated, from a scale derived from the detected cars. Never a measurement.
+    length_m: float
+    depth_m: float
+    fits: list[str]
+
+
+class CameraAnalysisResponse(BaseModel):
+    """What the vision pipeline currently sees through one camera."""
+
+    camera_id: str
+    ok: bool
+    reason: str = ""
+    #: Seconds since this frame was analysed. Shown to the reader, because a picture of a
+    #: street is worth very different amounts at two seconds and at two minutes.
+    age_seconds: float = -1.0
+    frame_width: int = 0
+    frame_height: int = 0
+    frame_data_uri: str = ""
+    vehicles: list[DetectedBox] = []
+    free_spaces: list[FreeSpaceBox] = []
+    pixels_per_metre: float = 0.0
+    scale_confident: bool = False
+    note: str = ""
+
+
 @router.get("", response_model=CameraList)
 async def list_cameras() -> CameraList:
     """Every camera a user may watch, for plotting on the map."""
     cameras = [_to_model(feed) for feed in PUBLIC_FEEDS]
+    for camera in cameras:
+        camera.free_spaces_seen = camera_analysis.cached_spot_count(camera.camera_id)
     return CameraList(cameras=cameras, count=len(cameras), disclaimer=_DISCLAIMER)
+
+
+@router.get("/{camera_id}/analysis", response_model=CameraAnalysisResponse)
+async def camera_analysis_endpoint(camera_id: str) -> CameraAnalysisResponse:
+    """Where a car would fit in what this camera can see right now.
+
+    Asking marks the camera as watched, so the background watcher keeps refreshing it for
+    the next minute and the next request is served from a reading a second or two old
+    rather than waiting for a fresh grab.
+
+    The work runs in a thread. It is a subprocess, a socket read and a forward pass, all
+    blocking, and doing that on the event loop would stall every other request.
+    """
+    import anyio
+
+    camera_analysis.mark_interest(camera_id)
+    analysis = await anyio.to_thread.run_sync(camera_analysis.analyse, camera_id)
+
+    return CameraAnalysisResponse(
+        camera_id=analysis.camera_id,
+        ok=analysis.ok,
+        reason=analysis.reason,
+        age_seconds=camera_analysis.age_seconds(camera_id),
+        frame_width=analysis.frame_width,
+        frame_height=analysis.frame_height,
+        frame_data_uri=analysis.frame_data_uri,
+        vehicles=[
+            DetectedBox(x1=v.x1, y1=v.y1, x2=v.x2, y2=v.y2, label=v.label, score=round(v.score, 3))
+            for v in analysis.vehicles
+        ],
+        free_spaces=[
+            FreeSpaceBox(
+                x1=f.x1,
+                y1=f.y1,
+                x2=f.x2,
+                y2=f.y2,
+                length_m=f.length_m,
+                depth_m=f.depth_m,
+                fits=f.fits,
+            )
+            for f in analysis.free_spaces
+        ],
+        pixels_per_metre=analysis.pixels_per_metre,
+        scale_confident=analysis.scale_confident,
+        note=analysis.note,
+    )
