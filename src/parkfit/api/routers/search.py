@@ -15,6 +15,8 @@ from parkfit.api.schemas import (
     GeocodeResponse,
     GeocodeResult,
     LegDetail,
+    NavigationLinkResponse,
+    NavigationResponse,
     RecommendationResponse,
     SearchCreate,
     SearchResponse,
@@ -24,6 +26,8 @@ from parkfit.config import get_settings
 from parkfit.domain.evidence import describe_freshness
 from parkfit.domain.vehicle import VehicleProfile
 from parkfit.services.geocoding import HybridGeocoder
+from parkfit.services.navigation import NavigationHandoff
+from parkfit.services.navigation import attach_to_candidates as attach_navigation
 from parkfit.services.search import (
     Candidate,
     SearchEngine,
@@ -131,6 +135,15 @@ async def create_search(
         finally:
             engine.close()
 
+        # Resolved once for the whole page, in one batched query for facility entrances,
+        # rather than per result.
+        handoffs = attach_navigation(
+            sync_session,
+            result.results,
+            origin_lat=payload.origin_lat,
+            origin_lon=payload.origin_lon,
+        )
+
         return SearchResponse(
             search_id=result.search_id,
             destination=(
@@ -147,7 +160,7 @@ async def create_search(
                 else None
             ),
             results=[
-                _to_recommendation(c, index, payload.expected_duration_minutes)
+                _to_recommendation(c, index, payload.expected_duration_minutes, handoffs.get(c.key))
                 for index, c in enumerate(result.results)
             ],
             considered=result.considered,
@@ -209,7 +222,10 @@ def _explain_fit(candidate: Candidate) -> str:
 
 
 def _to_recommendation(
-    candidate: Candidate, index: int, duration_minutes: int
+    candidate: Candidate,
+    index: int,
+    duration_minutes: int,
+    handoff: NavigationHandoff | None = None,
 ) -> RecommendationResponse:
     settings = get_settings()
     availability = candidate.availability
@@ -235,6 +251,24 @@ def _to_recommendation(
     # current. Handing the client an expiry stops a stale space being shown as live.
     expires_at = (
         now + timedelta(seconds=settings.exact_space_ttl_s) if candidate.is_exact_space else None
+    )
+
+    navigation = (
+        NavigationResponse(
+            lat=handoff.lat,
+            lon=handoff.lon,
+            label=handoff.label,
+            is_entrance=handoff.is_entrance,
+            point_description=handoff.point_description,
+            links=[
+                NavigationLinkResponse(
+                    provider=link.provider, display_name=link.display_name, url=link.url
+                )
+                for link in handoff.links
+            ],
+        )
+        if handoff is not None and handoff.available
+        else None
     )
 
     return RecommendationResponse(
@@ -265,6 +299,7 @@ def _to_recommendation(
         orientation=candidate.orientation,
         restriction_warnings=(candidate.restriction.warnings if candidate.restriction else []),
         is_exact_space=candidate.is_exact_space,
+        navigation=navigation,
         expires_at=expires_at,
     )
 

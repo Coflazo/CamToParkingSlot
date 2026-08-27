@@ -25,6 +25,7 @@
 #include "parkfit/geo/primitives.hpp"
 #include "parkfit/geo/rd.hpp"
 #include "parkfit/index/grid.hpp"
+#include "parkfit/nav/deeplink.hpp"
 #include "parkfit/rank/score.hpp"
 
 namespace py = pybind11;
@@ -346,4 +347,31 @@ PYBIND11_MODULE(parkfit_native, m) {
           py::arg("config") = rank::ScoringConfig{}, py::arg("max_results") = 10,
           py::arg("max_per_group") = 2,
           "Score, sort and spread results across distinct streets or facilities.");
+
+    // -- navigation handoff --------------------------------------------------
+    py::class_<nav::NavTarget>(m, "NavTarget")
+        .def(py::init<>())
+        .def_readwrite("lat", &nav::NavTarget::lat)
+        .def_readwrite("lon", &nav::NavTarget::lon)
+        .def_readwrite("label", &nav::NavTarget::label)
+        .def_readwrite("is_entrance", &nav::NavTarget::is_entrance)
+        .def("valid", &nav::NavTarget::valid);
+
+    py::class_<nav::NavOrigin>(m, "NavOrigin")
+        .def(py::init<>())
+        .def_readwrite("lat", &nav::NavOrigin::lat)
+        .def_readwrite("lon", &nav::NavOrigin::lon)
+        .def_readwrite("present", &nav::NavOrigin::present)
+        .def("valid", &nav::NavOrigin::valid);
+
+    py::class_<nav::NavLink>(m, "NavLink")
+        .def_readonly("provider", &nav::NavLink::provider)
+        .def_readonly("display_name", &nav::NavLink::display_name)
+        .def_readonly("url", &nav::NavLink::url);
+
+    m.def("format_coordinate", &nav::format_coordinate, py::arg("value"),
+          "Print a coordinate at full precision, no exponent, locale independent.");
+    m.def("build_nav_links", &nav::build_links, py::arg("target"),
+          py::arg("origin") = nav::NavOrigin{},
+          "Every navigation handoff URL for one exact destination.");
 }

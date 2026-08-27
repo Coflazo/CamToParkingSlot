@@ -11,6 +11,7 @@ import "./style.css";
 import { ApiError, api, getToken, setToken, streamAvailability } from "./api";
 import type { GeocodeResult, Recommendation, SearchResponse, Vehicle } from "./api";
 import { ParkingMap, escapeHtml } from "./map";
+import * as navigate from "./navigate";
 
 const el = <T extends HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -257,6 +258,8 @@ function resultCard(result: Recommendation): HTMLElement {
   card.dataset["fit"] = result.fit.verdict;
   card.dataset["id"] = result.id;
   card.tabIndex = 0;
+  // Drives the entrance stagger, so results arrive in rank order rather than all at once.
+  card.style.setProperty("--rank", String(result.rank));
 
   const drive = result.drive ? `${Math.round(result.drive.duration_min)} min drive` : "—";
   const walk = result.walk ? `${Math.round(result.walk.duration_min)} min walk` : "—";
@@ -296,7 +299,20 @@ function resultCard(result: Recommendation): HTMLElement {
           : ""
       }
     </div>
+    <button type="button" class="take-me" data-take="${escapeHtml(result.id)}"
+            ${result.navigation ? "" : "disabled"}>
+      <span>Take me there</span>
+      <span class="take-me-arrow" aria-hidden="true">&rarr;</span>
+    </button>
   `;
+
+  // Stops the card's own click handler from firing as well, which would re-select the
+  // card underneath the sheet that just opened.
+  card.querySelector<HTMLButtonElement>(".take-me")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    selectResult(result.id);
+    navigate.open(result);
+  });
 
   card.addEventListener("click", () => selectResult(result.id));
   card.addEventListener("keydown", (event) => {

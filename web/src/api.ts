@@ -46,6 +46,30 @@ export interface EvidenceDetail {
   total_spaces: number | null;
 }
 
+/** One "open in ..." handoff. */
+export interface NavigationLink {
+  provider: string;
+  display_name: string;
+  url: string;
+}
+
+/**
+ * Where to send the driver.
+ *
+ * `lat`/`lon` is the exact destination and is never an address: a street string gets
+ * re-geocoded by the receiving app against its own database and lands somewhere else.
+ * `point_description` says what the point actually is, because a driver routed to a car
+ * park centroid is still looking for the way in.
+ */
+export interface Navigation {
+  lat: number;
+  lon: number;
+  label: string;
+  is_entrance: boolean;
+  point_description: string;
+  links: NavigationLink[];
+}
+
 export interface Recommendation {
   id: string;
   kind: string;
@@ -69,6 +93,7 @@ export interface Recommendation {
   restriction_warnings: string[];
   is_exact_space: boolean;
   expires_at: string | null;
+  navigation: Navigation | null;
 }
 
 export interface SearchResponse {
