@@ -279,21 +279,41 @@ with one Friday. What the Brier scores above measure is whether the model recove
 structure it cannot see directly, which is a real estimation problem, but it is not a claim
 about real Amsterdam occupancy.
 
-The detector does not work on real camera imagery. It scores F1 0.994 on rendered scenes
-and falls over on a live frame: put through the Amsterdam Beursplein camera it reported two
-motorcycles, one in tree canopy and one on empty pavement, and missed both police vans in
-the shot. That is the sim-to-real gap, and it is what training on flat-shaded rendered
-boxes gets you. The pipeline works end to end on live video. The model needs real labelled
-imagery.
+The detector does not generalise to a camera it has not seen. The original one was
+trained on rendered boxes and fell over on the first real frame, reporting two motorcycles
+in tree canopy and missing both police vans, so it now trains on real frames pulled off
+live streets and labelled by a COCO-pretrained Faster R-CNN. That fixed the domain problem
+and exposed the next one. On cameras it trained on it peaks at 0.98 confidence and finds
+every vehicle; on two cameras held out entirely it peaks at 0.10 and finds nothing. Loss
+falls to 0.025, so it fits perfectly and generalises not at all.
 
-Camera coverage is a map rather than a network. 12,221 mapped camera locations come in from
-OpenStreetMap with real coordinates, operator and direction, and nearly all of them are
-private CCTV over a shop doorway. They carry no stream URL and permission `UNVERIFIED`,
-which is what the registry gate refuses to run. Four cameras are published live by their
-operators and can actually be opened: Amsterdam Damrak/Beursplein, Stationseiland and Dam
-Square, plus Zaanse Schans. I checked the commercial webcam aggregators too, and they do
-not hand a stream URL to a well-behaved client, because their players resolve manifests
-through endpoints their own robots files disallow.
+I checked whether that was capacity by swapping the 322k from-scratch trunk for an
+ImageNet-pretrained MobileNetV3. Precision on unseen cameras went from 0.200 to 0.500 and
+recall stayed at 0.003, and dropping the decode threshold to 0.08 produced detections with
+zero true positives, so the predictions are in the wrong places rather than merely faint.
+That rules out the backbone. Nine fixed viewpoints teach a model those nine streets rather
+than what a car is, so the missing ingredient is camera diversity, and the harvest across
+every live feed is the experiment that settles it.
+
+Camera coverage is a map rather than a network. 12,221 mapped camera locations come in
+from OpenStreetMap with real coordinates, operator and direction, and nearly all of them
+are private CCTV over a shop doorway. They carry no stream URL and permission
+`UNVERIFIED`, which is what the registry gate refuses to run.
+
+Two of the four feeds this file used to advertise are dead: Now4Rent's Dam Square answers
+"This video is not available" and Zaanse Schans is erroring. Rather than quietly lower the
+count I went looking properly and found 74 live Dutch streams, of which 10 verified
+fetchable on the first pass. Seven that can be placed on a map are in the registry the
+search reads; a port terminal, a railway and a waterway are real training footage and
+useless as "a camera near your bay", so they are harvested from and deliberately left out.
+`pf cameras verify` re-checks rather than trusting the list, because these are other
+people's cameras and they go down without telling anyone.
+
+Skylinewebcams lists 58 Dutch cameras and its robots file allows every crawler, so a plain
+browser renders the page and reads them, but the player resolves its manifest through a
+token endpoint, so I have the camera pages and not the streams. worldcams and
+dutchamsterdam return 403 to any client. I did not use insecam: it indexes cameras that
+are unsecured rather than published, and nobody in those frames agreed to be in them.
 
 The registry refuses by default. A feed nobody has assessed does not run. Production only
 accepts an explicit authorisation or an owner attestation, and "the robots file allowed it"

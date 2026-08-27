@@ -176,31 +176,89 @@ def read_labels(source: Path) -> list[LabelledFrame]:
     return [LabelledFrame(path=Path(row["path"]), boxes=row["boxes"]) for row in payload]
 
 
-def to_arrays(labelled: list[LabelledFrame]) -> tuple[np.ndarray, ...]:
-    """Encode labelled frames into the CenterNet targets the trainer expects.
+def encode_at(boxes: list[dict], width: int, height: int, stride: int = 4):
+    """CenterNet targets at an arbitrary input size.
 
-    Images come back as float32 NCHW in [0, 1] at the model's input size, and the four
-    target tensors match :func:`parkfit.ml.datasets.scenes.encode_targets` exactly, so the
-    same training loop consumes rendered and real data without knowing which it has.
+    :func:`parkfit.ml.datasets.scenes.encode_targets` is fixed to 512x288 because the
+    rendered pipeline and its tests are built around those constants. Real frames need
+    a bigger canvas: the median vehicle in the harvested set is 16 by 12 pixels at
+    512x288, and 71 percent are under 24 pixels wide, which at stride 4 is a car six
+    cells across. Doubling the input roughly doubles that and is the difference between
+    a detectable object and a smudge.
+    """
+    gw, gh = width // stride, height // stride
+    heatmap = np.zeros((len(scenes.CLASS_NAMES), gh, gw), dtype=np.float32)
+    size = np.zeros((2, gh, gw), dtype=np.float32)
+    offset = np.zeros((2, gh, gw), dtype=np.float32)
+    mask = np.zeros((gh, gw), dtype=np.float32)
+
+    for box in boxes:
+        w = box["x2"] - box["x1"]
+        h = box["y2"] - box["y1"]
+        if w <= 0 or h <= 0:
+            continue
+        cx = (box["x1"] + box["x2"]) / 2.0 / stride
+        cy = (box["y1"] + box["y2"]) / 2.0 / stride
+        cxi, cyi = int(cx), int(cy)
+        if not (0 <= cxi < gw and 0 <= cyi < gh):
+            continue
+        radius = max(1, int(scenes.gaussian_radius(h / stride, w / stride)))
+        scenes._draw_gaussian(heatmap[box["class"]], cxi, cyi, radius)
+        size[0, cyi, cxi] = w
+        size[1, cyi, cxi] = h
+        offset[0, cyi, cxi] = cx - cxi
+        offset[1, cyi, cxi] = cy - cyi
+        mask[cyi, cxi] = 1.0
+
+    return heatmap, size, offset, mask
+
+
+def to_arrays(
+    labelled: list[LabelledFrame],
+    width: int = scenes.INPUT_WIDTH,
+    height: int = scenes.INPUT_HEIGHT,
+) -> tuple[np.ndarray, ...]:
+    """Encode labelled frames into CenterNet targets at the requested input size.
+
+    Images come back as **uint8** NCHW rather than float32. At 960x544 a float32 copy of
+    650 frames is 4.1 GB, which does not fit beside everything else on a 15 GB machine;
+    the same frames as uint8 are 1.0 GB and the conversion to float costs nothing once it
+    happens per batch on the GPU. Boxes are stored against the model input size, so they
+    are rescaled here whenever the requested size differs from the one they were written
+    against.
     """
     from PIL import Image
 
     n = len(labelled)
-    images = np.zeros((n, 3, scenes.INPUT_HEIGHT, scenes.INPUT_WIDTH), dtype=np.float32)
-    heatmaps = np.zeros(
-        (n, len(scenes.CLASS_NAMES), scenes.GRID_HEIGHT, scenes.GRID_WIDTH), dtype=np.float32
-    )
-    sizes = np.zeros((n, 2, scenes.GRID_HEIGHT, scenes.GRID_WIDTH), dtype=np.float32)
-    offsets = np.zeros((n, 2, scenes.GRID_HEIGHT, scenes.GRID_WIDTH), dtype=np.float32)
-    masks = np.zeros((n, scenes.GRID_HEIGHT, scenes.GRID_WIDTH), dtype=np.float32)
+    gw, gh = width // 4, height // 4
+    images = np.zeros((n, 3, height, width), dtype=np.uint8)
+    heatmaps = np.zeros((n, len(scenes.CLASS_NAMES), gh, gw), dtype=np.float32)
+    sizes = np.zeros((n, 2, gh, gw), dtype=np.float32)
+    offsets = np.zeros((n, 2, gh, gw), dtype=np.float32)
+    masks = np.zeros((n, gh, gw), dtype=np.float32)
+
+    sx = width / float(scenes.INPUT_WIDTH)
+    sy = height / float(scenes.INPUT_HEIGHT)
 
     for i, item in enumerate(labelled):
         with Image.open(item.path) as handle:
-            resized = handle.convert("RGB").resize(
-                (scenes.INPUT_WIDTH, scenes.INPUT_HEIGHT), Image.BILINEAR
-            )
-            images[i] = np.asarray(resized, dtype=np.float32).transpose(2, 0, 1) / 255.0
-        heatmaps[i], sizes[i], offsets[i], masks[i] = scenes.encode_targets(item.boxes)
+            resized = handle.convert("RGB").resize((width, height), Image.BILINEAR)
+            images[i] = np.asarray(resized, dtype=np.uint8).transpose(2, 0, 1)
+        boxes = (
+            item.boxes
+            if (sx == 1.0 and sy == 1.0)
+            else [
+                {
+                    **b,
+                    "x1": b["x1"] * sx,
+                    "x2": b["x2"] * sx,
+                    "y1": b["y1"] * sy,
+                    "y2": b["y2"] * sy,
+                }
+                for b in item.boxes
+            ]
+        )
+        heatmaps[i], sizes[i], offsets[i], masks[i] = encode_at(boxes, width, height)
 
     return images, heatmaps, sizes, offsets, masks
 
