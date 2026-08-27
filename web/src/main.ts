@@ -12,6 +12,7 @@ import { ApiError, api, getToken, setToken, streamAvailability } from "./api";
 import type { GeocodeResult, Recommendation, SearchResponse, Vehicle } from "./api";
 import { ParkingMap, escapeHtml } from "./map";
 import * as navigate from "./navigate";
+import * as fitdiagram from "./fitdiagram";
 
 const el = <T extends HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -39,6 +40,8 @@ const vehicleAuth = el<HTMLDivElement>("vehicle-auth");
 const legend = el<HTMLDivElement>("map-legend");
 
 let currentResults: Recommendation[] = [];
+/** Kept so the fit diagram can be drawn to the selected car's real dimensions. */
+let loadedVehicles: Vehicle[] = [];
 let selectedId: string | null = null;
 let originCoords: { lat: number; lon: number } | null = null;
 let closeStream: (() => void) | null = null;
@@ -299,12 +302,15 @@ function resultCard(result: Recommendation): HTMLElement {
           : ""
       }
     </div>
+    <div class="fit-slot"></div>
     <button type="button" class="take-me" data-take="${escapeHtml(result.id)}"
             ${result.navigation ? "" : "disabled"}>
       <span>Take me there</span>
       <span class="take-me-arrow" aria-hidden="true">&rarr;</span>
     </button>
   `;
+
+  renderFitPanel(card, result);
 
   // Stops the card's own click handler from firing as well, which would re-select the
   // card underneath the sheet that just opened.
@@ -322,6 +328,46 @@ function resultCard(result: Recommendation): HTMLElement {
     }
   });
   return card;
+}
+
+/**
+ * The signature moment: the slack figure, and the car drawn to scale in the bay.
+ *
+ * Only drawn for a marked bay with a vehicle selected. For a car park there is no
+ * polygon to draw and no honest picture to make, so nothing is drawn rather than a
+ * decorative one.
+ */
+function renderFitPanel(card: HTMLElement, result: Recommendation): void {
+  const slot = card.querySelector<HTMLElement>(".fit-slot");
+  if (!slot) return;
+
+  const selectedId = vehicleSelect.value ? Number(vehicleSelect.value) : null;
+  const vehicle = loadedVehicles.find((v) => v.id === selectedId) ?? null;
+  const car = vehicle
+    ? {
+        lengthCm: vehicle.length_cm,
+        bodyWidthCm: vehicle.body_width_cm,
+        mirrorWidthCm: vehicle.width_with_mirrors_cm || vehicle.body_width_cm + 36,
+        label: vehicle.nickname,
+      }
+    : null;
+
+  const diagram = fitdiagram.render(result, car);
+  if (!diagram) return;
+
+  const summary = fitdiagram.slackSummary(result);
+  const panel = document.createElement("div");
+  panel.className = "fit-panel";
+  panel.innerHTML = `
+    <div class="fit-headline">
+      <span class="fit-value" data-verdict="${escapeHtml(result.fit.verdict)}">
+        ${escapeHtml(summary.value)}<span class="fit-unit">${escapeHtml(summary.unit)}</span>
+      </span>
+      <p class="fit-note">${escapeHtml(summary.note)}</p>
+    </div>
+  `;
+  panel.appendChild(diagram);
+  slot.appendChild(panel);
 }
 
 /** The evidence badge. Wording comes from the server so every surface agrees. */
@@ -363,6 +409,7 @@ async function loadVehicles(): Promise<void> {
   if (!getToken()) return;
   try {
     const vehicles = await api.vehicles();
+    loadedVehicles = vehicles;
     for (const vehicle of vehicles) {
       const option = document.createElement("option");
       option.value = String(vehicle.id);
