@@ -49,6 +49,8 @@ class RealTrainReport:
     epochs: int = 0
     parameters: int = 0
     backbone: str = ""
+    input_width: int = 0
+    input_height: int = 0
     train_frames: int = 0
     test_frames: int = 0
     train_boxes: int = 0
@@ -68,7 +70,7 @@ class RealTrainReport:
             return f"not trained: {self.reason}"
         return (
             f"{self.parameters:,} parameters ({self.backbone} trunk) on {self.device}, "
-            f"{self.epochs} epochs, "
+            f"{self.epochs} epochs at {self.input_width}x{self.input_height}, "
             f"{self.train_frames} real train frames ({self.train_boxes} boxes), "
             f"held out {', '.join(self.holdout_cameras)} "
             f"({self.test_frames} frames, {self.test_boxes} boxes)\n"
@@ -170,6 +172,38 @@ def _augment(
     mask: np.ndarray,
     rng: np.random.Generator,
 ) -> tuple[np.ndarray, ...]:
+    """Horizontal flip only, on uint8. Brightness and contrast happen on the GPU.
+
+    Splitting them matters for memory: jittering here would force a float32 copy of the
+    batch on the CPU, and the whole point of holding the set as uint8 is not to make
+    those copies.
+    """
+    images = images.copy()
+    heat, size, offset, mask = heat.copy(), size.copy(), offset.copy(), mask.copy()
+
+    for i in range(images.shape[0]):
+        if rng.random() < 0.5:
+            images[i] = images[i][:, :, ::-1]
+            heat[i] = heat[i][:, :, ::-1]
+            size[i] = size[i][:, :, ::-1]
+            mask[i] = mask[i][:, ::-1]
+            # The x offset is a fraction of a cell measured left to right, so mirroring
+            # the grid without inverting it puts every centre on the wrong side of its
+            # cell.
+            offset[i] = offset[i][:, :, ::-1]
+            offset[i][0] = np.where(mask[i] > 0, 1.0 - offset[i][0], 0.0)
+
+    return images, heat, size, offset, mask
+
+
+def _augment(
+    images: np.ndarray,
+    heat: np.ndarray,
+    size: np.ndarray,
+    offset: np.ndarray,
+    mask: np.ndarray,
+    rng: np.random.Generator,
+) -> tuple[np.ndarray, ...]:
     """Horizontal flip plus brightness and contrast jitter, applied per sample."""
     images = images.copy()
     heat, size, offset, mask = heat.copy(), size.copy(), offset.copy(), mask.copy()
@@ -206,6 +240,8 @@ def train_real(
     seed: int = 11,
     device: str = "cuda",
     backbone: str = "pretrained",
+    width: int = 960,
+    height: int = 544,
 ) -> RealTrainReport:
     """Fit the detector on teacher-labelled real frames and score it on unseen cameras."""
     try:
@@ -241,8 +277,12 @@ def train_real(
     rng = np.random.default_rng(seed)
 
     log.info("encoding %d train / %d test frames", len(train_frames), len(test_frames))
-    tr_images, tr_heat, tr_size, tr_offset, tr_mask = real.to_arrays(train_frames)
-    te_images, *_ = real.to_arrays(test_frames)
+    tr_images, tr_heat, tr_size, tr_offset, tr_mask = real.to_arrays(train_frames, width, height)
+    te_images, *_ = real.to_arrays(test_frames, width, height)
+    log.info(
+        "dataset in memory: %.2f GB as uint8",
+        (tr_images.nbytes + te_images.nbytes) / 1024**3,
+    )
 
     model = (build_pretrained_model() if backbone == "pretrained" else build_model()).to(device)
     parameters = sum(p.numel() for p in model.parameters())
@@ -258,6 +298,8 @@ def train_real(
         epochs=epochs,
         parameters=parameters,
         backbone=backbone,
+        input_width=width,
+        input_height=height,
         train_frames=len(train_frames),
         test_frames=len(test_frames),
         train_boxes=sum(len(f.boxes) for f in train_frames),
@@ -286,7 +328,13 @@ def train_real(
                 tr_mask[index],
                 rng,
             )
-            x = torch.from_numpy(np.ascontiguousarray(images)).to(device)
+            # uint8 to float on the device, so the CPU never holds a float32 batch.
+            x = torch.from_numpy(np.ascontiguousarray(images)).to(device).float().div_(255.0)
+            if rng.random() < 0.8:
+                brightness = float(rng.uniform(0.65, 1.35))
+                contrast = float(rng.uniform(0.8, 1.25))
+                mean = x.mean(dim=(1, 2, 3), keepdim=True)
+                x = ((x * brightness - mean) * contrast + mean).clamp_(0.0, 1.0)
             heat_t = torch.from_numpy(np.ascontiguousarray(heat)).to(device)
             size_t = torch.from_numpy(np.ascontiguousarray(size)).to(device)
             offset_t = torch.from_numpy(np.ascontiguousarray(offset)).to(device)
@@ -329,7 +377,11 @@ def train_real(
     with torch.inference_mode():
         for start in range(0, len(test_frames), batch_size):
             chunk = test_frames[start : start + batch_size]
-            x = torch.from_numpy(np.ascontiguousarray(te_images[start : start + batch_size]))
+            x = (
+                torch.from_numpy(np.ascontiguousarray(te_images[start : start + batch_size]))
+                .float()
+                .div_(255.0)
+            )
             # build_model applies sigmoid to the heatmap inside forward(), so the model
             # already hands back probabilities. Squashing them again puts every cell in
             # the 0.50 to 0.73 band, which is above any sensible decode threshold and
