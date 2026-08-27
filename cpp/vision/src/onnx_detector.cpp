@@ -13,125 +13,16 @@
 #include <fstream>
 #include <sstream>
 
-#ifdef _WIN32
-#  ifndef WIN32_LEAN_AND_MEAN
-#    define WIN32_LEAN_AND_MEAN
-#  endif
-#  include <windows.h>
-#else
-#  include <dlfcn.h>
-#endif
-
-#include "onnxruntime_c_api.h"
+#include "onnx_session.hpp"
 
 namespace parkfit::vision {
-namespace {
 
-// ---------------------------------------------------------------------------
-// A very small JSON reader.
-//
-// It only ever reads sidecars this project writes, so it does not need to be a real
-// parser. It does need to fail loudly rather than return a plausible wrong number, so
-// every reader reports whether it found the key instead of silently handing back a
-// default the caller cannot distinguish from a real value.
-// ---------------------------------------------------------------------------
-std::size_t find_key(const std::string& text, const std::string& key) {
-    const std::string quoted = "\"" + key + "\"";
-    const std::size_t at = text.find(quoted);
-    if (at == std::string::npos) return std::string::npos;
-    const std::size_t colon = text.find(':', at + quoted.size());
-    return colon == std::string::npos ? std::string::npos : colon + 1;
-}
-
-bool read_int(const std::string& text, const std::string& key, int& out) {
-    const std::size_t at = find_key(text, key);
-    if (at == std::string::npos) return false;
-    try {
-        out = std::stoi(text.substr(at, 32));
-        return true;
-    } catch (const std::exception&) {
-        return false;
-    }
-}
-
-bool read_string(const std::string& text, const std::string& key, std::string& out) {
-    std::size_t at = find_key(text, key);
-    if (at == std::string::npos) return false;
-    const std::size_t open = text.find('"', at);
-    if (open == std::string::npos) return false;
-    const std::size_t close = text.find('"', open + 1);
-    if (close == std::string::npos) return false;
-    out = text.substr(open + 1, close - open - 1);
-    return true;
-}
-
-bool read_string_array(const std::string& text, const std::string& key,
-                       std::vector<std::string>& out) {
-    std::size_t at = find_key(text, key);
-    if (at == std::string::npos) return false;
-    const std::size_t open = text.find('[', at);
-    const std::size_t close = text.find(']', open + 1);
-    if (open == std::string::npos || close == std::string::npos) return false;
-
-    std::vector<std::string> found;
-    std::size_t cursor = open + 1;
-    while (cursor < close) {
-        const std::size_t quote = text.find('"', cursor);
-        if (quote == std::string::npos || quote > close) break;
-        const std::size_t end = text.find('"', quote + 1);
-        if (end == std::string::npos || end > close) break;
-        found.push_back(text.substr(quote + 1, end - quote - 1));
-        cursor = end + 1;
-    }
-    if (found.empty()) return false;
-    out = std::move(found);
-    return true;
-}
-
-std::string read_file(const std::string& path) {
-    std::ifstream in(path, std::ios::binary);
-    if (!in) return {};
-    std::ostringstream buffer;
-    buffer << in.rdbuf();
-    return buffer.str();
-}
-
-// ---------------------------------------------------------------------------
-// Dynamic library handling
-// ---------------------------------------------------------------------------
-#ifdef _WIN32
-using LibHandle = HMODULE;
-LibHandle open_library(const std::string& path) { return ::LoadLibraryA(path.c_str()); }
-void* find_symbol(LibHandle h, const char* name) {
-    return reinterpret_cast<void*>(::GetProcAddress(h, name));
-}
-void close_library(LibHandle h) {
-    if (h) ::FreeLibrary(h);
-}
-#else
-using LibHandle = void*;
-LibHandle open_library(const std::string& path) {
-    return ::dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
-}
-void* find_symbol(LibHandle h, const char* name) { return ::dlsym(h, name); }
-void close_library(LibHandle h) {
-    if (h) ::dlclose(h);
-}
-#endif
-
-#ifdef _WIN32
-std::wstring widen(const std::string& text) {
-    if (text.empty()) return {};
-    const int needed =
-        ::MultiByteToWideChar(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), nullptr, 0);
-    std::wstring out(static_cast<std::size_t>(needed), L'\0');
-    ::MultiByteToWideChar(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), out.data(),
-                          needed);
-    return out;
-}
-#endif
-
-}  // namespace
+// The JSON readers and the dynamic loader now live in onnx_session.hpp, shared with
+// the occupancy classifier. Pulled in by name so the call sites below read unchanged.
+using detail::read_file;
+using detail::read_int;
+using detail::read_string;
+using detail::read_string_array;
 
 // ---------------------------------------------------------------------------
 OnnxModelSpec OnnxModelSpec::from_json(const std::string& text) {
@@ -148,127 +39,47 @@ OnnxModelSpec OnnxModelSpec::from_json(const std::string& text) {
 }
 
 std::vector<std::string> OnnxDetector::default_library_candidates() {
+    // Order matters, and getting it wrong is quiet. A bare library name is resolved by
+    // the OS loader through the system search path, which on a developer machine happily
+    // finds some other application's copy: this box had a 1.17 runtime on PATH while the
+    // project's own virtual environment held the 1.29 the build was configured against,
+    // and the loader took the old one and refused the model. The environment we control
+    // is therefore tried first and the bare name is the last resort rather than the
+    // first guess.
     return {
 #ifdef _WIN32
-        "onnxruntime.dll",
         ".venv/Lib/site-packages/onnxruntime/capi/onnxruntime.dll",
         "../.venv/Lib/site-packages/onnxruntime/capi/onnxruntime.dll",
+        "../../.venv/Lib/site-packages/onnxruntime/capi/onnxruntime.dll",
+        "onnxruntime.dll",
 #else
+        ".venv/lib/python3.12/site-packages/onnxruntime/capi/libonnxruntime.so",
+        "../.venv/lib/python3.12/site-packages/onnxruntime/capi/libonnxruntime.so",
         "libonnxruntime.so",
         "libonnxruntime.so.1",
-        ".venv/lib/python3.12/site-packages/onnxruntime/capi/libonnxruntime.so",
 #endif
     };
 }
 
 // ---------------------------------------------------------------------------
 struct OnnxDetector::Impl {
-    LibHandle library{};
-    const OrtApi* api{nullptr};
-    OrtEnv* env{nullptr};
-    OrtSession* session{nullptr};
-    OrtSessionOptions* options{nullptr};
-    OrtMemoryInfo* memory{nullptr};
-
+    detail::OnnxSession ort;
     OnnxModelSpec spec;
-    bool available{false};
-    std::string detail;
-    std::string library_path;
 
     /// Scratch buffer for the NCHW input, reused across frames. A worker samples a frame
     /// every few seconds for months; allocating half a megabyte each time is free in
     /// wall-clock terms and needless in every other.
     std::vector<float> input;
 
-    ~Impl() {
-        if (api) {
-            if (memory) api->ReleaseMemoryInfo(memory);
-            if (session) api->ReleaseSession(session);
-            if (options) api->ReleaseSessionOptions(options);
-            if (env) api->ReleaseEnv(env);
-        }
-        close_library(library);
-    }
-
-    /// Turn an OrtStatus into a message and release it. Returns true when there was an
-    /// error, so call sites read as `if (failed(status, "doing the thing")) return;`.
-    bool failed(OrtStatus* status, const char* what) {
-        if (status == nullptr) return false;
-        detail = std::string(what) + ": " + api->GetErrorMessage(status);
-        api->ReleaseStatus(status);
-        return true;
-    }
-
-    bool load_library(const std::string& requested) {
+    /// Open the model, defaulting the library search to the usual locations.
+    bool start(const std::string& model_path, const std::string& requested_library) {
         std::vector<std::string> candidates;
-        if (!requested.empty()) {
-            candidates.push_back(requested);
+        if (!requested_library.empty()) {
+            candidates.push_back(requested_library);
         } else {
             candidates = OnnxDetector::default_library_candidates();
         }
-
-        for (const auto& path : candidates) {
-            library = open_library(path);
-            if (library) {
-                library_path = path;
-                return true;
-            }
-        }
-        detail = "could not load the ONNX Runtime shared library; tried";
-        for (const auto& path : candidates) detail += " " + path;
-        return false;
-    }
-
-    bool start(const std::string& model_path, const std::string& requested_library) {
-        if (!load_library(requested_library)) return false;
-
-        auto* get_base =
-            reinterpret_cast<const OrtApiBase* (*)()>(find_symbol(library, "OrtGetApiBase"));
-        if (get_base == nullptr) {
-            detail = library_path + " does not export OrtGetApiBase; it is not ONNX Runtime";
-            return false;
-        }
-        const OrtApiBase* base = get_base();
-        if (base == nullptr) {
-            detail = "OrtGetApiBase returned null";
-            return false;
-        }
-        api = base->GetApi(ORT_API_VERSION);
-        if (api == nullptr) {
-            // The library is older than the header this was built against. Saying so is
-            // far more useful than a null dereference three lines later.
-            detail = std::string("this ONNX Runtime is too old; built against API version ") +
-                     std::to_string(ORT_API_VERSION) + ", library reports " +
-                     base->GetVersionString();
-            return false;
-        }
-
-        if (failed(api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "parkfit", &env), "CreateEnv")) {
-            return false;
-        }
-        if (failed(api->CreateSessionOptions(&options), "CreateSessionOptions")) return false;
-        // One thread. The worker samples at a fraction of a frame per second, so latency
-        // is irrelevant, and an intra-op pool sized to the core count is memory spent to
-        // no purpose on a box that may be running several workers.
-        api->SetIntraOpNumThreads(options, 1);
-        api->SetSessionGraphOptimizationLevel(options, ORT_ENABLE_ALL);
-
-#ifdef _WIN32
-        const std::wstring wide = widen(model_path);
-        OrtStatus* status = api->CreateSession(env, wide.c_str(), options, &session);
-#else
-        OrtStatus* status = api->CreateSession(env, model_path.c_str(), options, &session);
-#endif
-        if (failed(status, "CreateSession")) return false;
-
-        if (failed(api->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory),
-                   "CreateCpuMemoryInfo")) {
-            return false;
-        }
-
-        available = true;
-        detail = "loaded " + model_path + " via " + library_path;
-        return true;
+        return ort.start(model_path, candidates);
     }
 };
 
@@ -284,7 +95,7 @@ OnnxDetector::OnnxDetector(const std::string& model_path, const std::string& lib
     impl_->spec = OnnxModelSpec::from_json(read_file(sidecar_path));
 
     if (!impl_->start(model_path, library)) {
-        impl_->available = false;
+        impl_->ort.available = false;
     }
 }
 
@@ -296,13 +107,13 @@ DetectorInfo OnnxDetector::info() const {
     DetectorInfo out;
     out.backend = "onnxruntime";
     out.model_version = impl_->spec.model_version;
-    out.available = impl_->available;
-    out.detail = impl_->detail;
+    out.available = impl_->ort.available;
+    out.detail = impl_->ort.detail;
     return out;
 }
 
 std::vector<Detection> OnnxDetector::detect(const Frame& frame, double score_threshold) {
-    if (!impl_->available || frame.width() <= 0 || frame.height() <= 0) return {};
+    if (!impl_->ort.available || frame.width() <= 0 || frame.height() <= 0) return {};
 
     const int in_w = impl_->spec.input_width;
     const int in_h = impl_->spec.input_height;
@@ -352,8 +163,8 @@ std::vector<Detection> OnnxDetector::detect(const Frame& frame, double score_thr
 
     const std::array<std::int64_t, 4> shape{1, 3, in_h, in_w};
     OrtValue* input_tensor = nullptr;
-    if (impl_->failed(impl_->api->CreateTensorWithDataAsOrtValue(
-                          impl_->memory, impl_->input.data(), impl_->input.size() * sizeof(float),
+    if (impl_->ort.failed(impl_->ort.api->CreateTensorWithDataAsOrtValue(
+                          impl_->ort.memory, impl_->input.data(), impl_->input.size() * sizeof(float),
                           shape.data(), shape.size(),
                           ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor),
                       "CreateTensorWithDataAsOrtValue")) {
@@ -367,12 +178,12 @@ std::vector<Detection> OnnxDetector::detect(const Frame& frame, double score_thr
 
     std::vector<OrtValue*> outputs(output_names.size(), nullptr);
     OrtStatus* status =
-        impl_->api->Run(impl_->session, nullptr, input_names.data(), &input_tensor, 1,
+        impl_->ort.api->Run(impl_->ort.session, nullptr, input_names.data(), &input_tensor, 1,
                         output_names.data(), output_names.size(), outputs.data());
-    impl_->api->ReleaseValue(input_tensor);
-    if (impl_->failed(status, "Run")) {
+    impl_->ort.api->ReleaseValue(input_tensor);
+    if (impl_->ort.failed(status, "Run")) {
         for (auto* value : outputs) {
-            if (value) impl_->api->ReleaseValue(value);
+            if (value) impl_->ort.api->ReleaseValue(value);
         }
         return {};
     }
@@ -383,18 +194,18 @@ std::vector<Detection> OnnxDetector::detect(const Frame& frame, double score_thr
     int cols = 0;
     {
         OrtTensorTypeAndShapeInfo* info = nullptr;
-        if (!impl_->failed(impl_->api->GetTensorTypeAndShape(outputs[0], &info),
+        if (!impl_->ort.failed(impl_->ort.api->GetTensorTypeAndShape(outputs[0], &info),
                            "GetTensorTypeAndShape")) {
             std::size_t dim_count = 0;
-            impl_->api->GetDimensionsCount(info, &dim_count);
+            impl_->ort.api->GetDimensionsCount(info, &dim_count);
             std::vector<std::int64_t> dims(dim_count, 0);
-            impl_->api->GetDimensions(info, dims.data(), dim_count);
+            impl_->ort.api->GetDimensions(info, dims.data(), dim_count);
             if (dim_count == 4) {
                 classes = static_cast<int>(dims[1]);
                 rows = static_cast<int>(dims[2]);
                 cols = static_cast<int>(dims[3]);
             }
-            impl_->api->ReleaseTensorTypeAndShapeInfo(info);
+            impl_->ort.api->ReleaseTensorTypeAndShapeInfo(info);
         }
     }
 
@@ -403,9 +214,9 @@ std::vector<Detection> OnnxDetector::detect(const Frame& frame, double score_thr
         float* heatmap = nullptr;
         float* size = nullptr;
         float* offset = nullptr;
-        impl_->api->GetTensorMutableData(outputs[0], reinterpret_cast<void**>(&heatmap));
-        impl_->api->GetTensorMutableData(outputs[1], reinterpret_cast<void**>(&size));
-        impl_->api->GetTensorMutableData(outputs[2], reinterpret_cast<void**>(&offset));
+        impl_->ort.api->GetTensorMutableData(outputs[0], reinterpret_cast<void**>(&heatmap));
+        impl_->ort.api->GetTensorMutableData(outputs[1], reinterpret_cast<void**>(&size));
+        impl_->ort.api->GetTensorMutableData(outputs[2], reinterpret_cast<void**>(&offset));
 
         if (heatmap && size && offset) {
             detections = decode_centernet(heatmap, size, offset, classes, rows, cols,
@@ -423,7 +234,7 @@ std::vector<Detection> OnnxDetector::detect(const Frame& frame, double score_thr
     }
 
     for (auto* value : outputs) {
-        if (value) impl_->api->ReleaseValue(value);
+        if (value) impl_->ort.api->ReleaseValue(value);
     }
     return detections;
 }

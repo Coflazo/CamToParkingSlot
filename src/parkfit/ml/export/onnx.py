@@ -322,3 +322,82 @@ def export_real(
     onnx_path.with_suffix(".json").write_text(json.dumps(spec, indent=2), encoding="utf-8")
 
     return {"ok": all(v < tolerance for v in diffs.values()), "diffs": diffs, "spec": spec}
+
+
+def export_occupancy(
+    weights_path: Path,
+    onnx_path: Path,
+    *,
+    size: int = 96,
+    report_path: Path | None = None,
+    tolerance: float = 1e-4,
+) -> dict:
+    """Export the occupancy classifier and write the spec the C++ worker reads.
+
+    The worker crops each known bay from the frame with the homography it already has,
+    resizes to this input, and asks one question per crop. That is a different contract
+    from the detector's three feature maps, so the spec records the input size, the class
+    order and the operating threshold rather than a stride and a grid.
+
+    The threshold is part of the export on purpose. It was chosen on validation to hold
+    the false-free rate under target, and shipping the weights without it would leave the
+    worker guessing at 0.5, which is not the point the model was tuned for.
+    """
+    import numpy as np
+    import onnxruntime as ort
+    import torch
+
+    from parkfit.ml.datasets import occupancy as occ
+    from parkfit.ml.train.occupancy_cnn import build_model
+
+    model = build_model()
+    model.load_state_dict(torch.load(weights_path, map_location="cpu"))
+    model.eval()
+
+    onnx_path.parent.mkdir(parents=True, exist_ok=True)
+    dummy = torch.randn(1, 3, size, size)
+    torch.onnx.export(
+        model,
+        (dummy,),
+        str(onnx_path),
+        input_names=["patch"],
+        output_names=["logits"],
+        dynamic_axes={"patch": {0: "batch"}, "logits": {0: "batch"}},
+        opset_version=OPSET,
+        dynamo=False,
+    )
+
+    session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+    sample = np.random.rand(4, 3, size, size).astype(np.float32)
+    produced = session.run(None, {"patch": sample})[0]
+    with torch.inference_mode():
+        expected = model(torch.from_numpy(sample)).numpy()
+    scale = max(float(np.abs(expected).max()), 1e-6)
+    diff = float(np.abs(produced - expected).max() / scale)
+
+    trained: dict = {}
+    if report_path and report_path.exists():
+        trained = json.loads(report_path.read_text(encoding="utf-8"))
+
+    spec = {
+        "model_version": "bay-occupancy-1.0.0",
+        "task": "binary occupancy of a known parking bay",
+        "input_name": "patch",
+        "output_names": ["logits"],
+        "input_width": size,
+        "input_height": size,
+        "class_names": list(occ.CLASS_NAMES),
+        "opset": OPSET,
+        "trained_on": "CNRPark-EXT, 144,965 labelled real parking-space crops",
+        "protocol": trained.get("protocol"),
+        "holdout": trained.get("holdout"),
+        "accuracy": trained.get("accuracy"),
+        "precision": trained.get("precision"),
+        "recall": trained.get("recall"),
+        "auc": trained.get("auc"),
+        "false_free_rate": trained.get("false_free_rate"),
+        "operating_threshold": trained.get("threshold"),
+        "parity_max_relative_diff": diff,
+    }
+    onnx_path.with_suffix(".json").write_text(json.dumps(spec, indent=2), encoding="utf-8")
+    return {"ok": diff < tolerance, "diff": diff, "spec": spec}
