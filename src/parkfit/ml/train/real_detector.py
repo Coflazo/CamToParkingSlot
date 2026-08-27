@@ -48,6 +48,7 @@ class RealTrainReport:
     device: str = ""
     epochs: int = 0
     parameters: int = 0
+    backbone: str = ""
     train_frames: int = 0
     test_frames: int = 0
     train_boxes: int = 0
@@ -66,7 +67,8 @@ class RealTrainReport:
         if not self.trained:
             return f"not trained: {self.reason}"
         return (
-            f"{self.parameters:,} parameters on {self.device}, {self.epochs} epochs, "
+            f"{self.parameters:,} parameters ({self.backbone} trunk) on {self.device}, "
+            f"{self.epochs} epochs, "
             f"{self.train_frames} real train frames ({self.train_boxes} boxes), "
             f"held out {', '.join(self.holdout_cameras)} "
             f"({self.test_frames} frames, {self.test_boxes} boxes)\n"
@@ -74,6 +76,90 @@ class RealTrainReport:
             f"F1 {self.f1:.3f}  box MAE {self.box_mae_px:.2f} px  "
             f"peak VRAM {self.peak_vram_mb:.0f} MB"
         )
+
+
+def build_pretrained_model(num_classes: int = len(scenes.CLASS_NAMES)):
+    """CenterNet heads on an ImageNet-pretrained MobileNetV3 trunk.
+
+    The from-scratch 322k-parameter trunk fits nine fixed camera views perfectly and
+    finds nothing at all on a tenth. That is not a capacity problem, it is a features
+    problem: with a few hundred frames from a handful of viewpoints there is no way for
+    a randomly initialised trunk to learn what a car looks like as opposed to what
+    *this* street looks like. A trunk that has already seen 1.2 million photographs
+    starts with edges, texture and shape, and only the heads have to learn the task.
+
+    Output shapes, activations and channel order are identical to
+    :func:`parkfit.ml.train.detector.build_model`, so the ONNX contract and the C++
+    decoder do not know or care which trunk produced the tensors.
+    """
+    import torch
+    from torch import nn
+    from torchvision.models import MobileNet_V3_Small_Weights, mobilenet_v3_small
+
+    features = mobilenet_v3_small(weights=MobileNet_V3_Small_Weights.IMAGENET1K_V1).features
+
+    class PretrainedDetector(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            # Stage boundaries taken from the trunk's own strides: 4, 8, 16, 32.
+            self.stage4 = nn.Sequential(*features[0:2])
+            self.stage8 = nn.Sequential(*features[2:4])
+            self.stage16 = nn.Sequential(*features[4:9])
+            self.stage32 = nn.Sequential(*features[9:12])
+
+            def lateral(in_ch: int, out_ch: int = 64) -> nn.Conv2d:
+                return nn.Conv2d(in_ch, out_ch, 1, bias=False)
+
+            self.lat32, self.lat16 = lateral(96), lateral(48)
+            self.lat8, self.lat4 = lateral(24), lateral(16)
+
+            def smooth() -> nn.Sequential:
+                return nn.Sequential(
+                    nn.Conv2d(64, 64, 3, padding=1, bias=False),
+                    nn.BatchNorm2d(64),
+                    nn.ReLU(inplace=True),
+                )
+
+            self.smooth16, self.smooth8, self.smooth4 = smooth(), smooth(), smooth()
+
+            def head(out_ch: int) -> nn.Sequential:
+                return nn.Sequential(
+                    nn.Conv2d(64, 64, 3, padding=1, bias=False),
+                    nn.BatchNorm2d(64),
+                    nn.ReLU(inplace=True),
+                    nn.Conv2d(64, out_ch, 1),
+                )
+
+            self.heatmap_head = head(num_classes)
+            self.size_head = head(2)
+            self.offset_head = head(2)
+            # Same negative prior as the scratch model: without it the first steps predict
+            # roughly 0.5 everywhere and the focal loss sees tens of thousands of
+            # confident false positives.
+            nn.init.constant_(self.heatmap_head[-1].bias, -4.6)
+
+        def forward(self, x):
+            c4 = self.stage4(x)
+            c8 = self.stage8(c4)
+            c16 = self.stage16(c8)
+            c32 = self.stage32(c16)
+
+            def up(small, lateral_out):
+                return (
+                    nn.functional.interpolate(small, size=lateral_out.shape[-2:], mode="nearest")
+                    + lateral_out
+                )
+
+            p16 = self.smooth16(up(self.lat32(c32), self.lat16(c16)))
+            p8 = self.smooth8(up(p16, self.lat8(c8)))
+            p4 = self.smooth4(up(p8, self.lat4(c4)))
+
+            heatmap = torch.sigmoid(self.heatmap_head(p4))
+            size = nn.functional.softplus(self.size_head(p4))
+            offset = torch.sigmoid(self.offset_head(p4))
+            return heatmap, size, offset
+
+    return PretrainedDetector()
 
 
 def _augment(
@@ -119,6 +205,7 @@ def train_real(
     weights_path: Path = DEFAULT_REAL_WEIGHTS,
     seed: int = 11,
     device: str = "cuda",
+    backbone: str = "pretrained",
 ) -> RealTrainReport:
     """Fit the detector on teacher-labelled real frames and score it on unseen cameras."""
     try:
@@ -157,7 +244,7 @@ def train_real(
     tr_images, tr_heat, tr_size, tr_offset, tr_mask = real.to_arrays(train_frames)
     te_images, *_ = real.to_arrays(test_frames)
 
-    model = build_model().to(device)
+    model = (build_pretrained_model() if backbone == "pretrained" else build_model()).to(device)
     parameters = sum(p.numel() for p in model.parameters())
     optimiser = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
     steps_per_epoch = max(1, (len(train_frames) + batch_size - 1) // batch_size)
@@ -170,6 +257,7 @@ def train_real(
         device=device,
         epochs=epochs,
         parameters=parameters,
+        backbone=backbone,
         train_frames=len(train_frames),
         test_frames=len(test_frames),
         train_boxes=sum(len(f.boxes) for f in train_frames),

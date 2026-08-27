@@ -852,6 +852,7 @@ def detect_train_real(
     batch: int = typer.Option(8),
     holdout: str = typer.Option("", help="Comma-separated camera ids to hold out."),
     device: str = typer.Option("cuda"),
+    backbone: str = typer.Option("pretrained", help="pretrained or scratch."),
     out: str = typer.Option("data/models/detector_real.pt"),
     report_path: str = typer.Option("docs/architecture/detector_real.json"),
 ) -> None:
@@ -868,6 +869,7 @@ def detect_train_real(
         epochs=epochs,
         batch_size=batch,
         device=device,
+        backbone=backbone,
         weights_path=_pathlib.Path(out),
     )
     if not report.trained:
