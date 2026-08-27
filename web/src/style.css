@@ -446,7 +446,7 @@ button:focus-visible {
 .result {
   background: var(--bg-raised);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--fit-unknown);
+  border-left: 5px solid var(--fit-unknown);
   border-radius: var(--radius);
   padding: 12px 14px;
   cursor: pointer;
@@ -723,13 +723,38 @@ button:focus-visible {
   writing-mode: horizontal-tb;
 }
 
-.map-pin-best {
+/* Pin colour says whether the car fits, not where the option ranks. --accent is ink in
+   this palette, so colouring alternatives with it made every pin after the first a black
+   dot and threw away the one signal worth showing. */
+.map-pin[data-fit="FITS"] {
   background: var(--fit-ok);
+  color: #ffffff;
 }
 
-.map-pin-other {
-  background: var(--accent);
-  color: #fff;
+.map-pin[data-fit="TIGHT_FIT"] {
+  background: var(--fit-tight);
+  color: #1a1200;
+}
+
+.map-pin[data-fit="DOES_NOT_FIT"] {
+  background: var(--fit-no);
+  color: #ffffff;
+}
+
+.map-pin[data-fit="UNVERIFIED"] {
+  background: var(--fit-unknown);
+  color: #ffffff;
+}
+
+/* Rank is still legible, just not through hue: the best option gets a ring and a lift so
+   it reads first even among several pins of the same colour. */
+.map-pin-best {
+  box-shadow:
+    0 0 0 3px var(--bg-raised),
+    0 0 0 5px currentColor,
+    0 6px 18px rgb(0 0 0 / 30%);
+  transform: scale(1.16);
+  z-index: 2;
 }
 
 .map-pin-destination {
@@ -2470,4 +2495,141 @@ body.has-overlay {
   color: var(--text-faint);
   font-size: var(--step--1);
   line-height: 1.5;
+}
+
+
+/* ===========================================================================
+   VERDICT COLOUR ON THE RESULTS
+   ===========================================================================
+   The palette is monochrome because the brand mark is. The single exception is the fit
+   verdict, which is data: a driver reads the colour before reading the words, so it has
+   to be visible on the card and on the pin rather than implied by a hairline.
+=========================================================================== */
+.result[data-fit="FITS"] {
+  border-left-color: var(--fit-ok);
+}
+
+.result[data-fit="TIGHT_FIT"] {
+  border-left-color: var(--fit-tight);
+}
+
+.result[data-fit="DOES_NOT_FIT"] {
+  border-left-color: var(--fit-no);
+}
+
+.result[data-fit="UNVERIFIED"] {
+  border-left-color: var(--fit-unknown);
+}
+
+/* A tinted wash keyed to the verdict, kept faint so the card still reads as paper and
+   the fit diagram inside it stays the loudest thing on the card. */
+.result[data-fit="FITS"] {
+  background:
+    linear-gradient(90deg, rgb(26 127 55 / 7%), rgb(26 127 55 / 0%) 42%),
+    var(--bg-raised);
+}
+
+.result[data-fit="TIGHT_FIT"] {
+  background:
+    linear-gradient(90deg, rgb(154 103 0 / 8%), rgb(154 103 0 / 0%) 42%),
+    var(--bg-raised);
+}
+
+.result[data-fit="DOES_NOT_FIT"] {
+  background:
+    linear-gradient(90deg, rgb(207 34 46 / 8%), rgb(207 34 46 / 0%) 42%),
+    var(--bg-raised);
+}
+
+/* The legend explains the hues rather than leaving them to be guessed. */
+.legend .dot-best {
+  background: var(--fit-ok);
+}
+
+.legend .dot-other {
+  background: var(--fit-tight);
+}
+
+.legend .dot-unknown {
+  background: var(--fit-unknown);
+}
+
+
+/* ===========================================================================
+   CAMERA LIST
+   ===========================================================================
+   The map markers are the fast way in once you know they exist. This is the way in
+   for everybody else.
+=========================================================================== */
+.camera-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 1rem 0;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.camera-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--step-0);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.24s var(--ease-out),
+    transform 0.24s var(--ease-out);
+}
+
+.camera-row:hover,
+.camera-row:focus-visible {
+  border-color: var(--border-strong);
+  transform: translateX(2px);
+}
+
+.camera-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.camera-op {
+  color: var(--text-faint);
+  font-size: var(--step--1);
+}
+
+.camera-count {
+  flex: 0 0 auto;
+  color: var(--fit-ok);
+  font-family: var(--mono);
+  font-size: var(--step--1);
+  font-variant-numeric: tabular-nums;
+}
+
+.camera-count.is-quiet {
+  color: var(--text-faint);
+}
+
+/* Two controls plus the status pill do not fit a 320 px row, and the pill is already
+   hidden there. Below the narrowest phones the buttons shrink rather than wrap. */
+@media (max-width: 26rem) {
+  .nav-meta .button {
+    padding-inline: 0.7rem;
+    font-size: var(--step--1);
+    /* Narrower, not shorter. Trimming the horizontal padding to fit two controls on a
+       320 px row also trimmed the height to 38 px, which is under the 44 px target the
+       platforms ask for and small enough to miss with a thumb. */
+    min-height: 44px;
+  }
 }

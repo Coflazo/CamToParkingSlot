@@ -70,6 +70,15 @@ export class ParkingMap {
       zoom: 12.5,
       attributionControl: { compact: true },
     });
+    // The wheel belongs to the page, not to the map.
+    //
+    // MapLibre enables scroll-zoom by default, and with a full-bleed map behind a
+    // scrolling page that means every wheel tick was doing two things at once: Lenis
+    // moved the page and the map zoomed underneath it, which is why scrolling back felt
+    // like the background had come loose and would never stop. Zooming is still available
+    // on the buttons, on double-click and on a pinch, all of which are unambiguous.
+    this.map.scrollZoom.disable();
+
     this.map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     this.map.addControl(
       new maplibregl.GeolocateControl({ trackUserLocation: false }),
@@ -104,6 +113,12 @@ export class ParkingMap {
     results.forEach((result, index) => {
       const element = document.createElement("div");
       element.className = index === 0 ? "map-pin map-pin-best" : "map-pin map-pin-other";
+      // Coloured by verdict rather than by rank. The palette is monochrome everywhere
+      // else on purpose, and this is the one axis where a colour carries information:
+      // green fits, amber is tight, grey means nobody checked. Colouring by position in
+      // the list instead would spend the only colour the design has on a number that is
+      // already printed inside the pin.
+      element.dataset["fit"] = result.fit?.verdict ?? "UNVERIFIED";
       element.textContent = String(index + 1);
       element.addEventListener("click", () => this.onSelect(result.id));
 
@@ -212,6 +227,17 @@ export class ParkingMap {
         new Marker({ element }).setLngLat([camera.lon, camera.lat]).addTo(this.map),
       );
     }
+  }
+
+  /**
+   * Turn the map to a bearing, without animating.
+   *
+   * Scroll-driven, so it must track the finger exactly. Easing it here would fight the
+   * easing the scroll already has and turn a direct manipulation into a lag.
+   */
+  setBearing(degrees: number): void {
+    if (!this.ready) return;
+    this.map.setBearing(degrees);
   }
 
   private clearMarkers(): void {
