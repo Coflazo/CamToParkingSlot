@@ -241,3 +241,84 @@ def verify(
     report.boxes_onnx = total_onnx
     report.box_max_shift_px = shift
     report.agrees = worst <= tolerance and total_torch == total_onnx and shift <= 0.5
+
+
+def export_real(
+    weights_path: Path,
+    onnx_path: Path,
+    *,
+    width: int,
+    height: int,
+    report_path: Path | None = None,
+    tolerance: float = 1e-4,
+) -> dict:
+    """Export the real-frame detector and write the spec the C++ worker actually reads.
+
+    Kept separate from :func:`export` because that one is bound to the rendered
+    pipeline's 512x288 constants, and writing those into the sidecar for a model trained
+    at 960x544 would hand the worker the wrong input size. The worker takes the size from
+    this file rather than hardcoding it, so getting it right here is the whole contract.
+
+    Parity is checked in relative terms. An absolute tolerance flags a difference of a
+    millionth on a size output that runs to several hundred pixels, which is arithmetic
+    noise rather than an export fault.
+    """
+    import numpy as np
+    import onnxruntime as ort
+    import torch
+
+    from parkfit.ml.train.real_detector import build_pretrained_model
+
+    model = build_pretrained_model()
+    model.load_state_dict(torch.load(weights_path, map_location="cpu"))
+    model.eval()
+
+    onnx_path.parent.mkdir(parents=True, exist_ok=True)
+    dummy = torch.randn(1, 3, height, width)
+    torch.onnx.export(
+        model,
+        (dummy,),
+        str(onnx_path),
+        input_names=[INPUT_NAME],
+        output_names=list(OUTPUT_NAMES),
+        dynamic_axes={name: {0: "batch"} for name in (INPUT_NAME, *OUTPUT_NAMES)},
+        opset_version=OPSET,
+        dynamo=False,
+    )
+
+    session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+    sample = np.random.rand(2, 3, height, width).astype(np.float32)
+    produced = session.run(None, {INPUT_NAME: sample})
+    with torch.inference_mode():
+        expected = model(torch.from_numpy(sample))
+
+    diffs = {}
+    for name, got, want in zip(OUTPUT_NAMES, produced, expected, strict=True):
+        want = want.numpy()
+        scale = max(float(np.abs(want).max()), 1e-6)
+        diffs[name] = float(np.abs(got - want).max() / scale)
+
+    trained: dict = {}
+    if report_path and report_path.exists():
+        trained = json.loads(report_path.read_text(encoding="utf-8"))
+
+    spec = {
+        "model_version": "curb-detector-real-0.2.0",
+        "input_name": INPUT_NAME,
+        "output_names": list(OUTPUT_NAMES),
+        "input_width": width,
+        "input_height": height,
+        "output_stride": scenes.OUTPUT_STRIDE,
+        "class_names": list(scenes.CLASS_NAMES),
+        "opset": OPSET,
+        "trained_on": "real camera frames, teacher-labelled",
+        "val_f1": trained.get("f1"),
+        "val_precision": trained.get("precision"),
+        "val_recall": trained.get("recall"),
+        "val_box_mae_px": trained.get("box_mae_px"),
+        "holdout_cameras": trained.get("holdout_cameras"),
+        "parity_max_relative_diff": max(diffs.values()) if diffs else None,
+    }
+    onnx_path.with_suffix(".json").write_text(json.dumps(spec, indent=2), encoding="utf-8")
+
+    return {"ok": all(v < tolerance for v in diffs.values()), "diffs": diffs, "spec": spec}

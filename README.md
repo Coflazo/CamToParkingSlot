@@ -36,7 +36,7 @@ occupied scores well on accuracy and is useless, and one that invents a free spa
 then sends someone across a city for nothing. 10 of 1,225 truly vacant trials came out
 wrong in the unsafe direction.
 
-### Vehicle detector
+### Vehicle detector, on rendered scenes
 
 | | |
 |---|---:|
@@ -48,6 +48,13 @@ wrong in the unsafe direction.
 
 F1 by lighting condition: day 1.000, overcast 1.000, rain 1.000, dusk 1.000, glare 0.988,
 night 0.974.
+
+Read that table narrowly. It says the model learned the renderer, and the renderer is what
+makes gap-length error measurable at all, because the true answer is known by
+construction. It says nothing about a real street: the same model put through a live
+Amsterdam camera reported two motorcycles in a tree. On real frames the numbers are
+precision 0.120 and recall 0.014, and the whole investigation is in
+[Teaching it to see a real street](#teaching-it-to-see-a-real-street).
 
 ### Occupancy model
 
@@ -87,6 +94,127 @@ the estimator's, and it is why municipal bay sensors report every minute.
 
 ---
 
+## Teaching it to see a real street
+
+This is the part I got most wrong, so it gets the most space.
+
+The first detector trained on rendered scenes: flat-shaded boxes standing in for cars, lit
+by a fake sun. That buys exact ground truth, which is the only honest way to measure
+gap-length error, and it is why the rendered pipeline is still here. What it does not buy
+is a street. The first real frame I put through it came back with two motorcycles, one in
+a tree and one on empty pavement, and both police vans in the shot missing.
+
+So the pixels now come from live cameras and the labels come from something that has seen
+real photographs.
+
+### Where the frames come from
+
+`pf detect harvest` pulls frames off feeds their operators publish. Two of the four this
+file used to advertise had gone dead, so I went looking properly and found 74 live Dutch
+streams. 69 of them gave up frames.
+
+![Teacher labels on a real frame, boxes on cars along a boulevard with bicycles picked out separately](docs/images/teacher_labels.png)
+
+Getting the frames at all took a detour. ffmpeg cannot complete a TLS handshake against
+googlevideo from this machine and dies before any HTTP happens, while curl and urllib
+manage it fine. So transport is split three ways: yt-dlp resolves the manifest, urllib
+fetches the playlist and segments, and ffmpeg only ever opens a file already on disk. A
+feed carrying an hour of DVR segments gets sampled evenly across the hour rather than
+crawled at the live edge, because twelve frames from twelve consecutive seconds are twelve
+pictures of the same parked cars.
+
+| | |
+|---|---:|
+| Live Dutch streams found | 74 |
+| Cameras that produced frames | **69** |
+| Real frames harvested | **704** |
+| Teacher boxes | **2,491** |
+
+![Teacher boxes per camera, ranked, a long tail from about 175 down to a handful](docs/images/dataset_cameras.png)
+
+### The teacher
+
+A Faster R-CNN carrying COCO weights has seen 118,000 real photographs. It is far too
+heavy to run per frame in the vision worker, but it runs once, offline, and writes down
+what it saw. On the Dam Square frame that broke the old model it found 14 vehicles.
+
+These are pseudo-labels and I do not pretend otherwise. The teacher is wrong sometimes and
+the student inherits those mistakes. What the arrangement buys is domain: every pixel is a
+real Dutch street under real light. Gap-length accuracy is still measured against rendered
+scenes, where the answer is known by construction.
+
+Two of the seven classes have no source here. COCO has no van, they land in car or truck,
+and no trailer. The student sees five of seven, which is a hole rather than something I
+found a way to phrase around.
+
+### Three things that were wrong
+
+**The evaluation applied sigmoid twice.** `build_model` already sigmoids the heatmap
+inside `forward()` and I sigmoided it again before decoding. That squashed every cell into
+the 0.50 to 0.73 band, above any sensible threshold, so the whole grid became detections
+and precision read 0.004. The per-class metric had its own bug and announced itself more
+loudly: it counted a hit whenever any truth box shared the predicted class, which produced
+a recall of 7.495.
+
+**Nine cameras taught it nine streets.** With the sigmoid fixed the model hit 0.98
+confidence on cameras it trained on and 0.10 on two it had not seen. Loss fell to 0.025.
+It fit perfectly and generalised not at all. I assumed capacity and swapped the 322k
+from-scratch trunk for an ImageNet-pretrained MobileNetV3. Precision on unseen cameras
+went 0.200 to 0.500, recall stayed at 0.003, and dropping the threshold to 0.08 gave
+detections with zero true positives, so the predictions were in the wrong places rather
+than merely faint. That ruled out the backbone and left viewpoint diversity.
+
+Going from 9 cameras to 48 is what actually moved it:
+
+| Held-out cameras | 9 cameras | 48 cameras |
+|---|---:|---:|
+| Precision | 0.500 | **0.716** |
+| Recall | 0.003 | **0.111** |
+| Peak confidence, Beursplein frame | 0.045 | **0.323** |
+| False positives on that frame | invented vehicles | **0** |
+
+**The cars are too small to see.** Measuring what was left pointed at pixels, not data.
+
+![Vehicle width histogram, median 17px at 512x288 doubling to 33px at 960x544](docs/images/box_sizes.png)
+
+The median vehicle is 17 pixels wide at 512x288 input and 71 percent are under 24, which
+at stride 4 is a car four cells across. The C++ worker reads `input_width` and
+`input_height` from the model's sidecar rather than hardcoding them, so resolution is
+configuration on that side. Holding the set as float32 made the change unaffordable, 650
+frames at 960x544 is 4.1 GB on a machine with under 3 GB free, so frames are kept as uint8
+at 1.03 GB and converted per batch on the GPU where it costs nothing.
+
+### Where it actually stands
+
+I am not going to dress this up. The model that ships trains on all 69 cameras and is held
+out against 12 of them:
+
+| On 12 cameras never seen in training | |
+|---|---:|
+| Precision | 0.120 |
+| Recall | 0.014 |
+| F1 | 0.026 |
+| Box corner MAE | 0.14 px |
+| ONNX parity against PyTorch | 4.5e-06 |
+
+That is worse than the 0.716 and 0.111 above, and the difference is the test set rather
+than the model. The six-camera holdout was city streets. The twelve-camera one adds an
+airport, two construction sites, a railway cam and a seaside promenade, which is a fairer
+question and a much harder one. Quoting the kinder number would have been easy and would
+have been a lie.
+
+The higher-resolution run is unfinished rather than disproven. 120 epochs at 960x544
+reached loss 3.09 against 1.36 at the lower resolution and scored zero, which is what a
+quarter of the updates spread over four times the grid cells looks like. It needs hours I
+did not have, and I would rather say so than quote whichever run happened to look better.
+
+So: the pipeline is real end to end, the frames are real, the labels are real, the export
+is verified, and the detector is not good enough to put in front of a driver. The
+occupancy this product actually serves comes from operator feeds and municipal sensors,
+not from this model.
+
+---
+
 ## The interface
 
 ![The opening screen: "Your car. That bay. Measured." in display type over a dimmed map of Amsterdam](docs/images/hero.png)
@@ -100,6 +228,12 @@ gone when you arrive, and filtered to spaces the car fits.
 The line under the search box reads "308 considered within 800 m, ruled out: 103 too large
 for your vehicle, 87 not permitted". Switch the car to a Sprinter and the kerb bays vanish,
 because a 5.7 m bay cannot take a 7 m van.
+
+![The live camera viewer: an embedded stream from Amsterdam Damrak with the operator named and a close button](docs/images/camera.png)
+
+Every camera the vision pipeline may read is one you may watch. They sit on the map as
+viewfinder markers, the same shape as the logo. A system that says a bay is free on the
+strength of a camera should be willing to show you the camera.
 
 <img src="docs/images/mobile.png" alt="The same search on a phone: the console stacks, the status pill drops, and the results keep their fit diagrams" width="300">
 
@@ -196,6 +330,29 @@ On Windows you can use `.\tasks.ps1 serve` and `.\tasks.ps1 web` instead.
 The first search takes about four seconds while the 188,715-node road graph and the
 spatial index load. Every search after that is around 200 ms.
 
+### Add a car, or you will not see the interesting part
+
+Search works signed out, but the fit diagram is the whole point and it needs to know what
+you drive. Vehicles belong to an account, so make one:
+
+1. Open http://127.0.0.1:5173 and press **Vehicles** in the top right.
+2. Register with any email and password. It is your machine and your database.
+3. Add a car. `uv run pf cars` prints the fourteen test vehicles with their real RDW
+   dimensions if you want something plausible: the Volvo S60 is 460 by 180 by 143 cm and
+   1566 kg.
+4. Search again and pick it in the **Vehicle** dropdown.
+
+The status line under the search box changes the moment a car is selected. Without one it
+says how many options it found. With one it says how many it threw away and why: "308
+considered within 800 m, ruled out: 103 too large for your vehicle, 87 not permitted".
+
+### Watch the cameras
+
+Every camera the vision pipeline is allowed to read is one you are allowed to watch. They
+sit on the map as viewfinder markers. Click one for the live stream, press Escape or
+Close to shut it. Nothing is recorded, and closing the panel drops the stream rather than
+leaving it running behind the page.
+
 ### Machine learning
 
 Either from the command line, or step by step with charts:
@@ -279,21 +436,12 @@ with one Friday. What the Brier scores above measure is whether the model recove
 structure it cannot see directly, which is a real estimation problem, but it is not a claim
 about real Amsterdam occupancy.
 
-The detector does not generalise to a camera it has not seen. The original one was
-trained on rendered boxes and fell over on the first real frame, reporting two motorcycles
-in tree canopy and missing both police vans, so it now trains on real frames pulled off
-live streets and labelled by a COCO-pretrained Faster R-CNN. That fixed the domain problem
-and exposed the next one. On cameras it trained on it peaks at 0.98 confidence and finds
-every vehicle; on two cameras held out entirely it peaks at 0.10 and finds nothing. Loss
-falls to 0.025, so it fits perfectly and generalises not at all.
-
-I checked whether that was capacity by swapping the 322k from-scratch trunk for an
-ImageNet-pretrained MobileNetV3. Precision on unseen cameras went from 0.200 to 0.500 and
-recall stayed at 0.003, and dropping the decode threshold to 0.08 produced detections with
-zero true positives, so the predictions are in the wrong places rather than merely faint.
-That rules out the backbone. Nine fixed viewpoints teach a model those nine streets rather
-than what a car is, so the missing ingredient is camera diversity, and the harvest across
-every live feed is the experiment that settles it.
+The detector is not good enough to put in front of a driver. It reaches precision 0.120
+and recall 0.014 on twelve cameras it has never seen, which is not a number anyone should
+route a car on. The whole investigation is written up under "Teaching it to see a real
+street" above, including the two runs that scored better on easier test sets and why I am
+not quoting those instead. Occupancy served to users comes from operator feeds and
+municipal sensors; the model is not in that path.
 
 Camera coverage is a map rather than a network. 12,221 mapped camera locations come in
 from OpenStreetMap with real coordinates, operator and direction, and nearly all of them
