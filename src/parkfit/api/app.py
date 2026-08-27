@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 
 from parkfit import __version__
-from parkfit.api.routers import auth, parking, search, vehicles
+from parkfit.api.routers import auth, cameras, parking, search, vehicles
 from parkfit.api.schemas import HealthResponse
 from parkfit.config import get_settings
 from parkfit.native import HAS_NATIVE, native_version
@@ -112,6 +112,7 @@ v1.include_router(auth.router)
 v1.include_router(vehicles.router)
 v1.include_router(search.router)
 v1.include_router(parking.router)
+v1.include_router(cameras.router)
 
 try:
     from parkfit.api.routers import admin
