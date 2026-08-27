@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#12161c" />
+    <meta name="theme-color" content="#0a0c10" />
     <meta
       name="description"
-      content="Find parking in the Netherlands that actually fits your vehicle, with the evidence behind every claim."
+      content="Dutch parking search that measures whether your car actually fits the space, with the evidence behind every claim."
     />
     <title>CamToParkingSlot</title>
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -21,123 +21,171 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     />
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>&#128663;</text></svg>" />
+
+    <!-- A drawn mark: a bay outline above a kerb line. The previous favicon was a car
+         emoji, which renders differently on every platform and reads as a placeholder. -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230a0c10'/><rect x='7' y='9' width='18' height='11' rx='2' fill='none' stroke='%235b6cff' stroke-width='2'/><path d='M4 24h24' stroke='%23f4f2ed' stroke-width='2' stroke-linecap='round'/></svg>"
+    />
   </head>
   <body>
-    <div id="app">
-      <header class="topbar">
-        <div class="brand">
-          <span class="brand-mark" aria-hidden="true"></span>
-          <div>
-            <h1>CamToParkingSlot</h1>
-            <p class="tagline">Parking that fits your vehicle</p>
-          </div>
-        </div>
-        <div class="topbar-actions">
-          <span id="health-pill" class="pill pill-muted" title="Backend status">checking…</span>
+    <!-- One fixed grain layer. A flat dark surface reads as digital; a trace of noise
+         reads as a physical thing, and one fixed layer costs nothing to scroll. -->
+    <div class="grain" aria-hidden="true"></div>
+
+    <div id="app" data-view="intro">
+      <header class="nav">
+        <a class="mark" href="/" aria-label="CamToParkingSlot home">
+          <span class="mark-glyph" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <rect x="4" y="6" width="16" height="10" rx="2" />
+              <path d="M2 20h20" />
+            </svg>
+          </span>
+          <span class="mark-word">CamToParkingSlot</span>
+        </a>
+        <div class="nav-meta">
+          <span id="health-pill" class="pill pill-muted" title="Backend status">checking</span>
           <button id="vehicle-button" class="button button-ghost" type="button">Vehicles</button>
         </div>
       </header>
 
-      <main class="layout">
-        <section class="panel" aria-label="Search and results">
-          <form id="search-form" class="search" autocomplete="off">
-            <label class="field">
-              <span class="field-label">Where are you going?</span>
-              <input
-                id="destination"
-                name="destination"
-                type="text"
-                placeholder="Rembrandt House Museum"
-                required
-                minlength="2"
-                aria-describedby="destination-hint"
-              />
-              <span id="destination-hint" class="field-hint">
-                A place name works, museums, stations, venues, as well as an address.
-              </span>
-              <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
-            </label>
-
-            <div class="field-row">
-              <label class="field field-small">
-                <span class="field-label">Staying for</span>
-                <select id="duration" name="duration">
-                  <option value="60">1 hour</option>
-                  <option value="120" selected>2 hours</option>
-                  <option value="180">3 hours</option>
-                  <option value="360">6 hours</option>
-                  <option value="720">All day</option>
-                </select>
-              </label>
-              <label class="field field-small">
-                <span class="field-label">Max walk</span>
-                <select id="walk" name="walk">
-                  <option value="5">5 min</option>
-                  <option value="10">10 min</option>
-                  <option value="12" selected>12 min</option>
-                  <option value="20">20 min</option>
-                  <option value="30">30 min</option>
-                </select>
-              </label>
-              <label class="field field-small">
-                <span class="field-label">Vehicle</span>
-                <select id="vehicle" name="vehicle">
-                  <option value="">Not specified</option>
-                </select>
-              </label>
-            </div>
-
-            <div class="toggles">
-              <label class="toggle">
-                <input type="checkbox" id="on-street" checked />
-                <span>Include on-street bays</span>
-              </label>
-              <label class="toggle">
-                <input type="checkbox" id="ev" />
-                <span>Needs EV charging</span>
-              </label>
-              <label class="toggle">
-                <input type="checkbox" id="disabled-bay" />
-                <span>Disabled badge</span>
-              </label>
-            </div>
-
-            <button id="search-button" class="button button-primary" type="submit">
-              Find parking
-            </button>
-          </form>
-
-          <div id="status" class="status" role="status" aria-live="polite"></div>
-          <div id="results" class="results"></div>
-        </section>
-
-        <section class="map-panel" aria-label="Map">
+      <main class="stage">
+        <!-- The map bleeds to every edge and sits behind everything. Before a search it is
+             a dim texture; after one it becomes the working surface. -->
+        <div class="stage-map">
           <div id="map"></div>
           <div id="map-legend" class="legend" hidden>
             <span class="legend-item"><i class="dot dot-destination"></i>Destination</span>
             <span class="legend-item"><i class="dot dot-best"></i>Best option</span>
             <span class="legend-item"><i class="dot dot-other"></i>Alternatives</span>
           </div>
-        </section>
-      </main>
+        </div>
 
-      <dialog id="vehicle-dialog" class="dialog">
-        <form method="dialog" class="dialog-body">
-          <h2>Your vehicles</h2>
-          <p class="dialog-lead">
-            Dimensions decide which spaces are offered. RDW publishes length and width for
-            a Dutch plate but <strong>not height</strong>, and height is what a garage
-            barrier stops, so that one is always yours to confirm.
-          </p>
-          <div id="vehicle-list" class="vehicle-list"></div>
-          <div id="vehicle-auth" class="vehicle-auth"></div>
-          <menu class="dialog-actions">
-            <button value="close" class="button button-ghost">Close</button>
-          </menu>
-        </form>
-      </dialog>
+        <div class="stage-rail">
+          <!-- The opening statement collapses the moment a search runs, so it never stands
+               between a driver and the tool. The search field lives inside it, which makes
+               the dramatic state and the working state the same state. -->
+          <section class="intro" aria-labelledby="intro-title">
+            <p class="intro-eyebrow">
+              <span>Netherlands</span><i class="intro-rule"></i><span>Open data</span>
+            </p>
+
+            <h1 id="intro-title" class="intro-title">
+              <span class="line"><span class="word">Your</span> <span class="word">car.</span></span>
+              <span class="line"><span class="word">That</span> <span class="word">bay.</span></span>
+              <span class="line"><span class="word is-accent">Measured.</span></span>
+            </h1>
+
+            <p class="intro-lead">
+              Not parking nearby. The exact bay, surveyed to the centimetre, checked against
+              your car's registered dimensions before it is ever offered to you.
+            </p>
+
+            <dl class="intro-figures">
+              <div><dt>Bays surveyed</dt><dd>210,247</dd></div>
+              <div><dt>Car parks</dt><dd>4,871</dd></div>
+              <div><dt>Search p95</dt><dd>170<span>ms</span></dd></div>
+              <div><dt>False "it fits"</dt><dd>0.00<span>%</span></dd></div>
+            </dl>
+          </section>
+
+          <section class="console" aria-label="Search">
+            <form id="search-form" class="search" autocomplete="off">
+              <div class="field field-primary">
+                <label class="field-label" for="destination">Where are you going?</label>
+                <div class="field-shell">
+                  <input
+                    id="destination"
+                    name="destination"
+                    type="text"
+                    placeholder="Rembrandt House Museum"
+                    required
+                    minlength="2"
+                    aria-describedby="destination-hint"
+                  />
+                  <button id="search-button" class="button button-primary" type="submit">
+                    <span class="button-label">Find parking</span>
+                    <span class="button-arrow" aria-hidden="true">
+                      <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+                    </span>
+                  </button>
+                </div>
+                <span id="destination-hint" class="field-hint">
+                  A place name works: museums, stations, venues, or a plain address.
+                </span>
+                <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
+              </div>
+
+              <div class="field-row">
+                <label class="field field-small">
+                  <span class="field-label">Staying for</span>
+                  <select id="duration" name="duration">
+                    <option value="60">1 hour</option>
+                    <option value="120" selected>2 hours</option>
+                    <option value="180">3 hours</option>
+                    <option value="360">6 hours</option>
+                    <option value="720">All day</option>
+                  </select>
+                </label>
+                <label class="field field-small">
+                  <span class="field-label">Max walk</span>
+                  <select id="walk" name="walk">
+                    <option value="5">5 min</option>
+                    <option value="10">10 min</option>
+                    <option value="12" selected>12 min</option>
+                    <option value="20">20 min</option>
+                    <option value="30">30 min</option>
+                  </select>
+                </label>
+                <label class="field field-small">
+                  <span class="field-label">Vehicle</span>
+                  <select id="vehicle" name="vehicle">
+                    <option value="">Not specified</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="toggles">
+                <label class="toggle">
+                  <input type="checkbox" id="on-street" checked />
+                  <span>On-street bays</span>
+                </label>
+                <label class="toggle">
+                  <input type="checkbox" id="ev" />
+                  <span>Needs EV charging</span>
+                </label>
+                <label class="toggle">
+                  <input type="checkbox" id="disabled-bay" />
+                  <span>Disabled badge</span>
+                </label>
+              </div>
+            </form>
+          </section>
+
+          <div id="status" class="status" role="status" aria-live="polite"></div>
+          <div id="results" class="results"></div>
+        </div>
+      </main>
     </div>
+
+    <dialog id="vehicle-dialog" class="dialog">
+      <form method="dialog" class="dialog-body">
+        <h2>Your vehicles</h2>
+        <p class="dialog-lead">
+          Dimensions decide which spaces are offered. RDW publishes length, width and height
+          for a Dutch plate. What it cannot know is what is on your roof, and a roof box is
+          exactly what turns a car that clears a barrier into one that does not.
+        </p>
+        <div id="vehicle-list" class="vehicle-list"></div>
+        <div id="vehicle-auth" class="vehicle-auth"></div>
+        <menu class="dialog-actions">
+          <button value="close" class="button button-ghost">Close</button>
+        </menu>
+      </form>
+    </dialog>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
