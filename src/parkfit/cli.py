@@ -29,7 +29,7 @@ from parkfit.config import get_settings  # noqa: E402
 
 app = typer.Typer(
     name="pf",
-    help="ParkFit NL: vehicle-aware parking search for the Netherlands.",
+    help="CamToParkingSlot: vehicle-aware parking search for the Netherlands.",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -839,7 +839,7 @@ def status() -> None:
             ).scalar(),
         }
 
-    table = Table(title=f"ParkFit NL {__version__}", header_style="bold")
+    table = Table(title=f"CamToParkingSlot {__version__}", header_style="bold")
     table.add_column("component")
     table.add_column("value", justify="right")
     table.add_row("environment", settings.environment.value)

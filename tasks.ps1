@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    ParkFit NL task runner for Windows.
+    CamToParkingSlot task runner for Windows.
 
 .DESCRIPTION
     One entry point for every routine operation. It locates the MSVC toolchain from
@@ -260,7 +260,7 @@ function Task-Clean {
 
 function Task-Help {
     Write-Host @'
-ParkFit NL task runner
+CamToParkingSlot task runner
 
   setup     create the virtualenv, install dependencies, configure CMake
   build     compile the C++ core, vision worker and Python bindings

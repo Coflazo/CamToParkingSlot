@@ -1,5 +1,5 @@
 /**
- * ParkFit NL, application entry point.
+ * CamToParkingSlot, application entry point.
  *
  * The interface has one job beyond finding parking: never let a claim appear without
  * the evidence behind it. Every result shows what is known, where it came from and how

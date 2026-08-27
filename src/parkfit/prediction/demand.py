@@ -82,19 +82,40 @@ def _destination_curve(hour: float) -> float:
     return 2.0 * (0.62 * day + 0.72 * evening) - 1.0
 
 
+def _ramp(hour: float, start: float, end: float, ramp_hours: float = 2.0) -> float:
+    """A window that rises and falls over ``ramp_hours`` instead of switching instantly.
+
+    The first version of this returned a constant inside the window and another constant
+    outside, and plotting the result made the problem obvious: occupancy jumped fifteen
+    percentage points at exactly 11:00 and dropped back at 23:00. Streets do not do that.
+    A raised cosine gives the same plateau with edges a real Saturday morning could
+    produce, and costs one call to cos.
+    """
+    if hour <= start - ramp_hours or hour >= end + ramp_hours:
+        return 0.0
+    if start <= hour <= end:
+        return 1.0
+    # On one of the two shoulders: 0 at the far edge, 1 where the plateau begins.
+    distance = start - hour if hour < start else hour - end
+    return 0.5 * (1.0 + math.cos(math.pi * distance / ramp_hours))
+
+
 def _weekday_offset(weekday: int, hour: float) -> float:
     """How much busier or quieter this weekday is, in log-odds.
 
     Saturday afternoon and evening are the peak of the week in a Dutch city centre.
     Sunday morning is the trough. Monday to Thursday are flat and unremarkable, which is
     why they are not special-cased.
+
+    Every effect ramps rather than steps; see :func:`_ramp`.
     """
     if weekday == 5:  # Saturday
-        return 0.42 if 11.0 <= hour <= 23.0 else -0.10
+        return 0.42 * _ramp(hour, 11.0, 23.0) - 0.10 * (1.0 - _ramp(hour, 11.0, 23.0))
     if weekday == 6:  # Sunday
-        return -0.55 if hour < 12.0 else 0.08
-    if weekday == 4 and hour >= 17.0:  # Friday evening
-        return 0.30
+        quiet = _ramp(hour, 0.0, 10.0, ramp_hours=3.0)
+        return -0.55 * quiet + 0.08 * (1.0 - quiet)
+    if weekday == 4:  # Friday evening
+        return 0.30 * _ramp(hour, 18.0, 24.0, ramp_hours=2.5)
     return 0.0
 
 

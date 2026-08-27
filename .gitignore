@@ -57,3 +57,7 @@ data/test-run/
 # Web build output
 web/dist/
 web/node_modules/
+
+# Working notes, not part of the deliverable.
+TODO.md
+data/figures/

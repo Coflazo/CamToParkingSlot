@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
     if stats.get("checkpoint_ms"):
         log.info("WAL checkpoint: %s ms", stats["checkpoint_ms"])
     log.info(
-        "ParkFit NL %s starting | database=%s | native=%s",
+        "CamToParkingSlot %s starting | database=%s | native=%s",
         __version__,
         "postgres" if settings.is_postgres else "sqlite",
         HAS_NATIVE,
@@ -68,7 +68,7 @@ async def lifespan(app: FastAPI):
             await flusher
         # One last drain so a clean shutdown does not lose the tail.
         await asyncio.to_thread(flush_ledger)
-        log.info("ParkFit NL shutting down")
+        log.info("CamToParkingSlot shutting down")
 
 
 async def _flush_recommendations_periodically(interval_s: float = 20.0) -> None:
@@ -86,7 +86,7 @@ async def _flush_recommendations_periodically(interval_s: float = 20.0) -> None:
 
 
 app = FastAPI(
-    title="ParkFit NL",
+    title="CamToParkingSlot",
     version=__version__,
     description=(
         "Vehicle-aware parking search for the Netherlands.\n\n"
@@ -171,7 +171,7 @@ def health() -> HealthResponse:
 def index() -> JSONResponse:
     return JSONResponse(
         {
-            "name": "ParkFit NL",
+            "name": "CamToParkingSlot",
             "version": __version__,
             "docs": "/docs",
             "health": "/health",

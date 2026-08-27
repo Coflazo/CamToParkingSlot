@@ -32,7 +32,7 @@ namespace py = pybind11;
 using namespace parkfit;
 
 PYBIND11_MODULE(parkfit_native, m) {
-    m.doc() = "ParkFit NL native core: geodesy, spatial index, vehicle fit and ranking.";
+    m.doc() = "CamToParkingSlot native core: geodesy, spatial index, vehicle fit and ranking.";
     m.attr("__version__") = "0.1.0";
 
     // ----------------------------------------------------------------- geo
