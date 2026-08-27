@@ -1,11 +1,15 @@
 # CamToParkingSlot
 
-Dutch parking search that answers one question properly: **will my car actually fit in that
-space, and will it still be there when I arrive?**
+### Every parking app tells you a space exists. This one draws your car in it.
 
-Enter a destination and which car you are driving. You get parking ranked by what it really
-costs you, drive time plus walk time plus price plus the risk of arriving to find it gone,
-filtered to spaces your vehicle physically fits. Every claim carries its source and its age.
+![A Volvo S60 drawn to scale in a Waterlooplein bay, with 38 cm to spare and the tightest clearance labelled at the width](docs/images/fit.png)
+
+That is a real Amsterdam bay, surveyed to the centimetre, and a real Volvo S60 at its
+registered dimensions. Both numbers come from Dutch open data. The 38 cm is arithmetic, not
+an estimate, and the drawing shares one scale so it cannot flatter the fit.
+
+The tightest point is the width. A 2.16 m mirror span in a 2.23 m bay leaves 3.5 cm a side,
+so that is what the diagram calls out.
 
 ---
 
@@ -77,6 +81,20 @@ a mean dwell of about five minutes. Fifteen-minute polling therefore recovers 70
 true rate and thirty-minute polling 52 %, because turnovers that start and finish inside one
 sample are invisible. That is a property of the feed, not the estimator, and it is why
 municipal bay sensors report every minute.
+
+---
+
+## The whole thing
+
+![The application: search panel, ranked results with evidence, fit diagram, and a live map](docs/images/app.png)
+
+Enter a destination and which car you are driving. Results are ranked by what parking really
+costs you, drive time plus walk time plus price plus the risk of arriving to find it gone,
+and filtered to spaces your vehicle physically fits.
+
+Read the line under the search box: **103 ruled out as too large for your vehicle, 87 as not
+permitted.** That is the product working. Change the car to a Sprinter and the kerb bays
+disappear entirely, because a 5.7 m bay cannot take a 7 m van.
 
 ---
 
@@ -226,6 +244,8 @@ is how a parking app teaches people not to trust it.
 ---
 
 ## Take me there
+
+![The handoff sheet showing the exact coordinate and six navigation apps](docs/images/handoff.png)
 
 Tapping a result hands the space to Google Maps, Apple Maps, Waze, Yandex, OpenStreetMap or
 whatever the device registers for `geo:` URIs, as **coordinates, never an address**. A

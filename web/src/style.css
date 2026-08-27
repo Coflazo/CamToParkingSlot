@@ -970,3 +970,159 @@ button:focus-visible {
     transform: translateY(8px);
   }
 }
+
+/* ---------------------------------------------------------------------------
+   The fit diagram
+   ---------------------------------------------------------------------------
+   Your car, to scale, in that bay, dimensioned like a workshop drawing. This is the
+   one thing here nobody else can draw, because it needs both a surveyed bay polygon
+   and your registered dimensions, and it is the product's whole claim in one glance.
+
+   One scale for bay and car. A drawing that stretched the car to look comfortable
+   would be worse than no drawing at all.
+--------------------------------------------------------------------------- */
+.fit-panel {
+  display: grid;
+  /* The headline column gets a floor. Without it "cm to spare" wraps to three lines
+     beside the number and the whole thing reads as debris rather than a figure. */
+  grid-template-columns: minmax(8.5rem, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 1.1rem;
+  margin-top: 0.9rem;
+  padding: 1.1rem 1.15rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background:
+    radial-gradient(120% 140% at 12% 0%, rgb(76 154 255 / 7%), transparent 62%),
+    var(--bg-sunken);
+}
+
+/* The gasping number. Display type against 11px dimension labels is roughly a 6:1
+   step, and it is doing real work: the slack in centimetres is the answer the
+   driver came for, so it is the largest thing on the card. */
+.fit-headline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.fit-value {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  flex-wrap: nowrap;
+  font-family: var(--mono);
+  font-size: clamp(2.4rem, 1.6rem + 3.2vw, 3.6rem);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  /* Negative tracking pulls three digits into one mark rather than three. */
+  letter-spacing: -0.055em;
+  line-height: 0.92;
+  color: var(--text);
+}
+
+.fit-value[data-verdict="DOES_NOT_FIT"] {
+  color: var(--fit-no);
+}
+
+.fit-value[data-verdict="TIGHT_FIT"] {
+  color: var(--fit-tight);
+}
+
+.fit-value[data-verdict="FITS"] {
+  color: var(--fit-ok);
+}
+
+.fit-unit {
+  font-family: var(--font);
+  font-size: var(--step--1);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--text-muted);
+  /* Two words per line at most, so the phrase stays a caption rather than a column. */
+  max-width: 4.5rem;
+}
+
+.fit-note {
+  margin: 0.35rem 0 0;
+  color: var(--text-faint);
+  font-size: var(--step--1);
+  letter-spacing: 0.01em;
+  text-wrap: balance;
+}
+
+.fit-diagram {
+  width: 100%;
+  height: auto;
+  /* The side dimension sits outside the viewBox by design; without this it is clipped. */
+  overflow: visible;
+}
+
+/* Recessive drawing, assertive dimensions. The bay is paint, so it is dashed; the
+   kerb is concrete, so it is solid and heavier. */
+.fd-bay {
+  fill: none;
+  stroke: var(--border-strong);
+  stroke-width: 1.25;
+  stroke-dasharray: 7 5;
+}
+
+.fd-kerb {
+  stroke: var(--text-faint);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.fd-car {
+  fill: rgb(76 154 255 / 26%);
+  stroke: var(--accent);
+  stroke-width: 1.25;
+}
+
+/* Mirrors sit under the body and overhang it, which is the entire reason bodywork
+   and mirror span are tracked as separate numbers. */
+.fd-mirrors {
+  fill: rgb(76 154 255 / 10%);
+  stroke: rgb(76 154 255 / 40%);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.fd-dim line {
+  stroke: var(--text-faint);
+  stroke-width: 1;
+}
+
+.fd-dim text {
+  fill: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The dimension that runs out first. A bay is never just "tight"; it is tight
+   somewhere, and that somewhere is worth naming. */
+.fd-dim.is-binding line {
+  stroke: var(--fit-tight);
+  stroke-width: 1.5;
+}
+
+.fd-dim.is-binding text {
+  fill: var(--fit-tight);
+  font-weight: 600;
+}
+
+.fd-caption {
+  fill: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+}
+
+@media (max-width: 30rem) {
+  .fit-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
