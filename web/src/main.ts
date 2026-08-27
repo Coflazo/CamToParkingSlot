@@ -174,8 +174,13 @@ form.addEventListener("submit", (event) => {
 });
 
 async function runSearch(): Promise<void> {
-  const destination = destinationInput.value.trim();
-  if (destination.length < 2) return;
+  let destination = destinationInput.value.trim();
+  if (destination.length < 2) {
+    // Pressing the button with nothing typed used to do nothing at all, which reads as a
+    // broken button rather than as a prompt. Fill in somewhere real instead.
+    destination = pickTrialDestination();
+    destinationInput.value = destination;
+  }
 
   searchButton.disabled = true;
   // The button holds a label span and an arrow. Writing textContent would erase
@@ -237,6 +242,9 @@ function setButtonLabel(text: string): void {
 function setView(view: "intro" | "results"): void {
   const app = document.getElementById("app");
   if (app && app.dataset["view"] !== view) app.dataset["view"] = view;
+  // North back up for the working view. A tilted map is atmosphere behind a headline and
+  // a nuisance behind a route.
+  if (view === "results") map.setBearing(0);
 }
 
 function renderSearch(response: SearchResponse): void {
@@ -464,6 +472,51 @@ vehicleButton.addEventListener("click", () => {
  * interaction nobody can opt out of, so hijacking its feel is exactly the case that
  * setting exists for.
  */
+/**
+ * Turn the city as the page scrolls.
+ *
+ * Scroll is the one interaction every visitor performs, and by default it moves content
+ * past a static backdrop. Tying the map's bearing to scroll position makes the backdrop
+ * part of the gesture: down turns the city clockwise, back turns it anticlockwise, and
+ * stopping halfway leaves it halfway. It is reversible, it never takes the scroll away
+ * from the reader, and it costs one setBearing per frame.
+ *
+ * Only before a search. Once results are on screen the map is a working surface showing
+ * where the driver is going, and rotating that under them would be hostile rather than
+ * atmospheric.
+ */
+const MAX_BEARING_DEGREES = 34;
+
+function bindScrollRotation(): void {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  const app = document.getElementById("app");
+  let frame = 0;
+
+  const update = () => {
+    frame = 0;
+    if (!app || app.dataset["view"] !== "intro") return;
+
+    // Normalised against how far the page can actually scroll, not against a screenful.
+    // The intro is built to fit the viewport, so it only scrolls a few hundred pixels;
+    // dividing by the window height there spent a tenth of the rotation and the effect
+    // was invisible. This spends the whole turn over whatever range exists.
+    const range = Math.max(document.documentElement.scrollHeight - window.innerHeight, 1);
+    const progress = Math.min(1, Math.max(0, window.scrollY / range));
+    map.setBearing(progress * MAX_BEARING_DEGREES);
+  };
+
+  // Coalesced into one frame: a wheel fires far more often than the screen refreshes,
+  // and setting the bearing several times between two paints is work nobody sees.
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (frame === 0) frame = window.requestAnimationFrame(update);
+    },
+    { passive: true },
+  );
+}
+
 function startSmoothScroll(): void {
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
@@ -666,6 +719,7 @@ navigator.geolocation?.getCurrentPosition(
 );
 
 startSmoothScroll();
+bindScrollRotation();
 void refreshHealth();
 /** Placeholder cards in the shape of real results, shown while a search is running. */
 function showSkeleton(count = 3): void {
@@ -872,9 +926,83 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !camSheet.hidden) closeCamera();
 });
 
+/**
+ * Destinations to fall back on when the field is empty.
+ *
+ * Every one of these was checked against the running geocoder before it went in, because
+ * a demo address that returns nothing is worse than no demo at all. Deliberately not
+ * shown as placeholder text or a dropdown: somebody who presses the button without typing
+ * wants to see the thing work, not to be asked another question.
+ */
+const TRIAL_DESTINATIONS = [
+  "Rembrandt House Museum",
+  "Anne Frank House",
+  "Rijksmuseum",
+  "Amsterdam Centraal",
+  "Vondelpark",
+  "Dam Square",
+  "Artis",
+  "NEMO Science Museum",
+  "Westerkerk",
+  "Van Gogh Museum",
+  "Concertgebouw",
+  "Albert Cuypmarkt",
+  "Oosterpark",
+  "Amsterdam Zuid",
+  "Museumplein",
+  "Leidseplein",
+  "Rembrandtplein",
+  "Waterlooplein",
+];
+
+function pickTrialDestination(): string {
+  const index = Math.floor(Math.random() * TRIAL_DESTINATIONS.length);
+  return TRIAL_DESTINATIONS[index] ?? TRIAL_DESTINATIONS[0]!;
+}
+
+let cameraDisclaimer = "";
+let knownCameras: PublicCamera[] = [];
+
+const cameraDialog = el<HTMLDialogElement>("camera-dialog");
+const cameraList = el<HTMLDivElement>("camera-list");
+
+function renderCameraList(): void {
+  if (knownCameras.length === 0) {
+    cameraList.innerHTML = `<p class="dialog-lead">No cameras are reachable right now.</p>`;
+    return;
+  }
+  cameraList.innerHTML = "";
+  for (const camera of knownCameras) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "camera-row";
+    const seen =
+      camera.free_spaces_seen >= 0
+        ? `<span class="camera-count">${camera.free_spaces_seen} space${
+            camera.free_spaces_seen === 1 ? "" : "s"
+          } seen</span>`
+        : `<span class="camera-count is-quiet">not read yet</span>`;
+    row.innerHTML =
+      `<span class="camera-row-main"><strong>${escapeHtml(camera.name)}</strong>` +
+      `<span class="camera-op">${escapeHtml(camera.operator)}</span></span>${seen}`;
+    row.addEventListener("click", () => {
+      cameraDialog.close();
+      openCamera(camera, cameraDisclaimer);
+    });
+    cameraList.appendChild(row);
+  }
+}
+
+el<HTMLButtonElement>("camera-button").addEventListener("click", () => {
+  renderCameraList();
+  cameraDialog.showModal();
+});
+
 async function loadCameras(): Promise<void> {
   try {
     const { cameras, disclaimer } = await api.cameras();
+    knownCameras = cameras;
+    cameraDisclaimer = disclaimer;
     map.showCameras(cameras, (camera) => openCamera(camera, disclaimer));
   } catch {
     // A missing camera list is not worth a visible error: the map and the search both

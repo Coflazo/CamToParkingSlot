@@ -50,6 +50,7 @@
         </a>
         <div class="nav-meta">
           <span id="health-pill" class="pill pill-muted" title="Backend status">checking</span>
+          <button id="camera-button" class="button button-ghost" type="button">Cameras</button>
           <button id="vehicle-button" class="button button-ghost" type="button">Vehicles</button>
         </div>
       </header>
@@ -61,8 +62,9 @@
           <div id="map"></div>
           <div id="map-legend" class="legend" hidden>
             <span class="legend-item"><i class="dot dot-destination"></i>Destination</span>
-            <span class="legend-item"><i class="dot dot-best"></i>Best option</span>
-            <span class="legend-item"><i class="dot dot-other"></i>Alternatives</span>
+            <span class="legend-item"><i class="dot dot-best"></i>Fits</span>
+            <span class="legend-item"><i class="dot dot-other"></i>Tight</span>
+            <span class="legend-item"><i class="dot dot-unknown"></i>Not checked</span>
           </div>
         </div>
 
@@ -104,8 +106,6 @@
                     name="destination"
                     type="text"
                     placeholder="Rembrandt House Museum"
-                    required
-                    minlength="2"
                     aria-describedby="destination-hint"
                   />
                   <button id="search-button" class="button button-primary" type="submit">
@@ -117,6 +117,7 @@
                 </div>
                 <span id="destination-hint" class="field-hint">
                   A place name works: museums, stations, venues, or a plain address.
+                  Leave it empty and it will pick somewhere in Amsterdam for you.
                 </span>
                 <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
               </div>
@@ -224,6 +225,25 @@
         </footer>
       </div>
     </div>
+
+    <!-- The cameras are markers on a map, which is fine once you know they are there and
+         invisible until then. This lists them by name so they can be found without
+         hunting, and says plainly what they are and are not. -->
+    <dialog id="camera-dialog" class="dialog">
+      <form method="dialog" class="dialog-body">
+        <h2>Live cameras</h2>
+        <p class="dialog-lead">
+          Feeds their operators publish, which the vision pipeline is allowed to read and
+          you are allowed to watch. Opening one shows the stream and what the detector
+          currently sees through it. They are wide pan-tilt-zoom views and the operator
+          points them, so a camera near a space is not necessarily showing it.
+        </p>
+        <div id="camera-list" class="camera-list"></div>
+        <menu class="dialog-actions">
+          <button value="close" class="button button-ghost">Close</button>
+        </menu>
+      </form>
+    </dialog>
 
     <dialog id="vehicle-dialog" class="dialog">
       <form method="dialog" class="dialog-body">
