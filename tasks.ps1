@@ -210,6 +210,11 @@ function Task-Lint {
     Write-Step 'ruff'
     Invoke-Native $py @('-m','ruff','check','src','tests')
     if ($LASTEXITCODE -ne 0) { throw 'ruff found issues' }
+    # The same check CI runs. Without it, formatting drift passes locally and fails on
+    # push, which is exactly what happened twice: the linter was clean and the formatter
+    # was not, and nothing here would have caught it.
+    Invoke-Native $py @('-m','ruff','format','--check','src','tests')
+    if ($LASTEXITCODE -ne 0) { throw 'ruff format would reformat files; run .\tasks.ps1 fmt' }
     Write-Step 'mypy'
     Invoke-Native $py @('-m','mypy')
     Write-Ok 'lint clean'
