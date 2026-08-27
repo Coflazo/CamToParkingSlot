@@ -181,6 +181,16 @@ async function runSearch(): Promise<void> {
   // both and leave a bare word where the control used to be.
   setButtonLabel("Searching");
   setStatus("Looking for parking…");
+  // A cold search loads a 188,715-node road graph and the spatial index, which takes
+  // about four seconds. Four seconds of an empty column reads as a broken page, so the
+  // shape of the answer goes down first and the real cards replace it in place.
+  // Collapse the opening statement the moment a search starts rather than when it
+  // finishes. A cold search takes about four seconds, and doing this on arrival meant
+  // the whole wait happened with the headline still filling the screen and the
+  // skeleton sitting below the fold, where nobody could see the thing telling them
+  // to wait. The transition belongs on intent, not on completion.
+  setView("results");
+  showSkeleton();
   closeStream?.();
   closeStream = null;
 
@@ -402,6 +412,8 @@ function renderFitPanel(card: HTMLElement, result: Recommendation): void {
       <p class="fit-note">${escapeHtml(summary.note)}</p>
     </div>
   `;
+
+  countUp(panel.querySelector<HTMLElement>(".fit-value"), summary.value);
   panel.appendChild(diagram);
   slot.appendChild(panel);
 }
@@ -654,6 +666,51 @@ navigator.geolocation?.getCurrentPosition(
 
 startSmoothScroll();
 void refreshHealth();
+/** Placeholder cards in the shape of real results, shown while a search is running. */
+function showSkeleton(count = 3): void {
+  resultsBox.innerHTML = Array.from(
+    { length: count },
+    (_, i) => `<div class="skeleton" style="--rank:${i}" aria-hidden="true">
+      <div class="sk-line sk-title"></div>
+      <div class="sk-line sk-meta"></div>
+      <div class="sk-block"></div>
+    </div>`,
+  ).join("");
+}
+
+// ------------------------------------------------------------- the slack figure
+const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+/**
+ * Count the clearance figure up while the car is still sliding into the bay, so the
+ * number and the picture resolve on the same beat. Only the leading numeric run is
+ * animated: "does not fit" and similar verdicts are text and must not be counted.
+ */
+function countUp(node: HTMLElement | null, finalText: string): void {
+  if (!node) return;
+  const target = Number.parseFloat(finalText);
+  if (!Number.isFinite(target) || REDUCED_MOTION.matches) return;
+
+  const unit = node.querySelector(".fit-unit");
+  const decimals = finalText.includes(".") ? finalText.split(".")[1]!.length : 0;
+  const duration = 900;
+  const started = performance.now();
+
+  const step = (now: number) => {
+    const t = Math.min(1, (now - started) / duration);
+    // The same expo-out the rest of the interface uses, so the number decelerates
+    // exactly as the car does.
+    const eased = 1 - Math.pow(1 - t, 3);
+    node.firstChild!.nodeValue = (target * eased).toFixed(decimals);
+    if (t < 1) requestAnimationFrame(step);
+    else node.firstChild!.nodeValue = finalText;
+  };
+
+  node.firstChild!.nodeValue = (0).toFixed(decimals);
+  if (unit) node.appendChild(unit);
+  requestAnimationFrame(step);
+}
+
 // ------------------------------------------------------------- live cameras
 const camSheet = el<HTMLDivElement>("cam-sheet");
 const camFrame = el<HTMLIFrameElement>("cam-frame");

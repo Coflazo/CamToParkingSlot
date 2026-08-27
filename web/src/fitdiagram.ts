@@ -121,10 +121,19 @@ export function render(result: Recommendation, car: CarDimensions | null): SVGSV
   const bh = acrossCm * scale;
 
   // The kerb, drawn as the solid edge. A driver reads the picture from the kerb inward.
-  svg.appendChild(el("line", { x1: bx - 14, y1: by + bh, x2: bx + bw + 14, y2: by + bh, class: "fd-kerb" }));
+  svg.appendChild(
+    el("line", {
+      x1: bx - 14, y1: by + bh, x2: bx + bw + 14, y2: by + bh,
+      class: "fd-kerb", pathLength: "1",
+    }),
+  );
 
   // The bay: painted lines, so dashed.
-  svg.appendChild(el("rect", { x: bx, y: by, width: bw, height: bh, rx: 2, class: "fd-bay" }));
+  svg.appendChild(
+    el("rect", {
+      x: bx, y: by, width: bw, height: bh, rx: 2, class: "fd-bay", pathLength: "1",
+    }),
+  );
 
   const carW = carAlongCm * scale;
   const carH = carAcrossCm * scale;
@@ -134,7 +143,8 @@ export function render(result: Recommendation, car: CarDimensions | null): SVGSV
   // Mirrors first, so the body sits over them.
   const mirrorW = mirrorAlongCm * scale;
   const mirrorH = mirrorAcrossCm * scale;
-  svg.appendChild(
+  const vehicle = el("g", { class: "fd-vehicle" }) as SVGGElement;
+  vehicle.appendChild(
     el("rect", {
       x: bx + (bw - mirrorW) / 2,
       y: by + (bh - mirrorH) / 2,
@@ -144,7 +154,14 @@ export function render(result: Recommendation, car: CarDimensions | null): SVGSV
       class: "fd-mirrors",
     }),
   );
-  svg.appendChild(el("rect", { x: cx, y: cy, width: carW, height: carH, rx: 6, class: "fd-car" }));
+  vehicle.appendChild(
+    el("rect", { x: cx, y: cy, width: carW, height: carH, rx: 6, class: "fd-car" }),
+  );
+  // The car enters from off the left of the bay and settles in, so the diagram shows
+  // the car being parked rather than already parked. The distance is the car's own
+  // length plus the left gap, which keeps the entry off-canvas at every scale.
+  vehicle.style.setProperty("--enter", `${-(carW + cx - bx + 24)}px`);
+  svg.appendChild(vehicle);
 
   // Clearances, in real centimetres rather than pixels.
   const endGapCm = (alongCm - carAlongCm) / 2;

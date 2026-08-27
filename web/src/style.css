@@ -347,7 +347,9 @@ button:focus-visible {
   font-size: 14px;
   font-weight: 550;
   cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease;
+  transition:
+    background-color 0.24s var(--ease-out),
+    border-color 0.24s var(--ease-out);
 }
 
 .button-primary {
@@ -448,7 +450,9 @@ button:focus-visible {
   border-radius: var(--radius);
   padding: 12px 14px;
   cursor: pointer;
-  transition: border-color 120ms ease, transform 120ms ease;
+  transition:
+    border-color 0.24s var(--ease-out),
+    transform 0.24s var(--ease-out);
 }
 
 .result:hover {
@@ -556,7 +560,7 @@ button:focus-visible {
   height: 100%;
   border-radius: 999px;
   background: var(--live);
-  transition: width 200ms ease;
+  transition: width 0.6s var(--ease-out);
 }
 
 .empty {
@@ -1364,7 +1368,7 @@ button:focus-visible {
      the headline is merely large; at it, the page has a clear first and second
      voice and reads as hierarchy even out of focus. The vh term is what keeps
      the promise: on a short screen the ratio yields before the tool does. */
-  font-size: clamp(2.6rem, min(9.2vw, 13vh), 9.5rem);
+  font-size: clamp(2.6rem, min(9.6vw, 15.5vh), 9.5rem);
   font-weight: 700;
   letter-spacing: -0.052em;
   line-height: 0.9;
@@ -2130,5 +2134,236 @@ body.has-overlay {
 
   .cam-actions .button {
     justify-content: center;
+  }
+}
+
+/* ===========================================================================
+   THE SIGNATURE MOMENT
+   ===========================================================================
+   The fit diagram is the product's whole claim, and it used to simply appear.
+   Now it builds in the order a person would draw it: the kerb, then the bay's
+   painted lines, then the car arriving into the space, then the clearance that
+   is left over. The car entering from off-canvas is the beat that matters. A
+   static drawing says "it fits"; a car sliding into a bay and stopping with
+   room to spare shows it.
+
+   Total run is 1.5s. Anything longer and a driver waiting for an answer is
+   watching an animation instead of reading one.
+=========================================================================== */
+.fit-diagram .fd-kerb,
+.fit-diagram .fd-bay {
+  /* pathLength="1" on the elements makes this scale independent. */
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: fd-draw 0.75s var(--ease-out) forwards;
+}
+
+.fit-diagram .fd-bay {
+  animation-delay: 0.16s;
+}
+
+@keyframes fd-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.fit-diagram .fd-vehicle {
+  opacity: 0;
+  transform: translateX(var(--enter, -120px));
+  animation: fd-park 0.9s var(--ease-out) 0.42s forwards;
+}
+
+@keyframes fd-park {
+  from {
+    opacity: 0;
+    transform: translateX(var(--enter, -120px));
+  }
+
+  30% {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* The dimensions are the answer, so they arrive last and together, after the car
+   has come to rest. */
+.fit-diagram .fd-dim {
+  opacity: 0;
+  animation: fd-measure 0.5s var(--ease-out) 1.16s forwards;
+}
+
+.fit-diagram .fd-caption {
+  opacity: 0;
+  animation: fd-measure 0.5s var(--ease-out) 1.28s forwards;
+}
+
+@keyframes fd-measure {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* The slack figure counts up while the car is still moving, so the number and the
+   picture resolve together. Tabular figures stop the width jittering as it runs. */
+.fit-value {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fit-diagram .fd-kerb,
+  .fit-diagram .fd-bay,
+  .fit-diagram .fd-vehicle,
+  .fit-diagram .fd-dim,
+  .fit-diagram .fd-caption {
+    animation: none;
+    opacity: 1;
+    stroke-dashoffset: 0;
+    transform: none;
+  }
+}
+
+/* ===========================================================================
+   RANK HIERARCHY
+   ===========================================================================
+   Every result used to look the same, so a list of ten read as ten equal things
+   and the ranking was carried by a small "#1" alone. The best option is the
+   answer to the question that was asked; it should look like the answer.
+
+   The scale step is small on purpose. Making the first card enormous would push
+   the alternatives off the screen, and the alternatives are why anyone scrolls.
+=========================================================================== */
+.result:first-child {
+  padding: 1.3rem 1.35rem 1.4rem;
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow);
+}
+
+.result:first-child .result-name {
+  font-size: var(--step-2);
+  letter-spacing: -0.032em;
+}
+
+/* Everything after the best option recedes slightly, so the eye lands on the top
+   of the list and then walks down it rather than scanning a flat wall. */
+.result:not(:first-child) .result-name {
+  color: var(--text);
+  font-size: var(--step-1);
+}
+
+.result:not(:first-child) {
+  --recede: 0.94;
+}
+
+.result:not(:first-child) .result-meta {
+  opacity: var(--recede);
+}
+
+/* The rank number is set in the monospace face with tabular figures so the column
+   of "#1 #2 #10" stays on one vertical line instead of wandering. */
+.result-rank {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+/* Headlines get balanced wrapping so a two-word orphan never dangles on its own
+   line. Supported everywhere that matters and inert where it is not. */
+.result-name,
+.cam-title,
+.intro-lead {
+  text-wrap: balance;
+}
+
+/* ===========================================================================
+   LOADING STATE
+   ===========================================================================
+   A cold search loads the road graph and the spatial index and takes about four
+   seconds. A spinner says "wait"; a skeleton in the shape of the answer says
+   "here is what is coming", and the real cards then replace it in place rather
+   than the column jumping when they land.
+=========================================================================== */
+.skeleton {
+  padding: 1.05rem 1.15rem 1.15rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgb(var(--raised-rgb) / 70%);
+  opacity: 0;
+  animation: rise-in 0.5s var(--ease-out) forwards;
+  animation-delay: calc(var(--rank, 0) * 70ms);
+}
+
+.sk-line,
+.sk-block {
+  border-radius: 3px;
+  /* The sweep travels rather than pulsing, which reads as work happening instead
+     of as something blinking for attention. */
+  background: linear-gradient(
+    90deg,
+    rgb(var(--ink-rgb) / 6%) 0%,
+    rgb(var(--ink-rgb) / 12%) 50%,
+    rgb(var(--ink-rgb) / 6%) 100%
+  );
+  background-size: 200% 100%;
+  animation: sk-sweep 1.4s var(--ease-in-out) infinite;
+}
+
+.sk-title {
+  width: 52%;
+  height: 1.05rem;
+  margin-bottom: 0.7rem;
+}
+
+.sk-meta {
+  width: 78%;
+  height: 0.72rem;
+  margin-bottom: 0.95rem;
+}
+
+.sk-block {
+  height: 4.5rem;
+}
+
+@keyframes sk-sweep {
+  from {
+    background-position: 200% 0;
+  }
+
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton,
+  .sk-line,
+  .sk-block {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+/* On a short viewport something has to give between the headline, the four figures
+   and the console. The figures go: they are supporting evidence, and the same
+   numbers are in the README and on the results themselves. The headline keeps its
+   scale and the submit button stays reachable without scrolling, which is the
+   ordering that matters. */
+@media (max-height: 54rem) {
+  .intro-figures {
+    display: none;
+  }
+
+  .intro-lead {
+    margin-bottom: 1.5rem;
   }
 }
