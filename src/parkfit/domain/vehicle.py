@@ -1,8 +1,10 @@
 """Vehicle profiles and the RDW licence-plate lookup.
 
 RDW publishes the national vehicle register openly, and a plate lookup returns make,
-model, length, width, mass and fuel type. It does **not** reliably publish height, which
-is the single most important dimension for parking: a height barrier is the constraint
+model, length, width, height, mass and fuel type. Height *is* published, for 4.86 million
+passenger cars, and an earlier version of this module wrongly assumed otherwise.
+
+What the register cannot know is what is on the roof, and that is the constraint
 that physically stops a vehicle. So the flow is lookup, then *confirm*: the user is
 asked for height, mirror width and anything on the roof, and only confirmed values are
 treated as known.
@@ -152,6 +154,10 @@ class RdwVehicleClient(BaseAdapter):
         length = parse_float(row.get("lengte"))
         width = parse_float(row.get("breedte"))
         mass = parse_float(row.get("massa_ledig_voertuig"))
+        # It does publish height, for 4.86 million passenger cars. An earlier version of
+        # this code asserted the opposite and threw the field away, which made every
+        # plate lookup ask the driver to measure a number the register already knew.
+        height = parse_float(row.get("hoogte_voertuig"))
         fuel = row.get("brandstof_omschrijving") or row.get("aandrijving")
 
         profile = VehicleProfile(
@@ -160,11 +166,13 @@ class RdwVehicleClient(BaseAdapter):
             model=(row.get("handelsbenaming") or "").title() or None,
             length_cm=length or 0.0,
             body_width_cm=width or 0.0,
+            height_cm=height or 0.0,
             weight_kg=mass or 0.0,
             fuel_type=str(fuel) if fuel else None,
             emission_class=row.get("europese_voertuigcategorie"),
             length_confirmed=bool(length),
             width_confirmed=bool(width),
+            height_confirmed=bool(height),
             weight_confirmed=bool(mass),
         )
         profile.is_ev = bool(fuel and "elektr" in str(fuel).lower())
@@ -180,9 +188,12 @@ class RdwVehicleClient(BaseAdapter):
             missing.append("length_cm")
         if not width:
             missing.append("body_width_cm")
-        # Height is essentially never present in this dataset, and it is the dimension
-        # that decides whether a car clears a barrier, so it is always asked for.
-        missing.append("height_cm")
+        if not height:
+            missing.append("height_cm")
+        # Whatever is on the roof is never in the register, and a roof box is exactly what
+        # turns a car that clears a barrier into one that does not. Asked for separately
+        # from the bodywork height, which is now known.
+        missing.append("roof_accessories")
         missing.append("width_with_mirrors_cm")
         profile.unconfirmed_fields = missing
         return profile

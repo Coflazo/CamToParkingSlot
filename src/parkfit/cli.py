@@ -199,6 +199,9 @@ def _print_ingest_table(results) -> None:
 @app.command()
 def search(
     destination: Annotated[str, typer.Argument(help="Where you want to go.")],
+    car: str = typer.Option(
+        "", "--car", help="A preset from `pf cars`, for example polo, s60, x5, transit."
+    ),
     length: float = typer.Option(405.0, help="Vehicle length in cm."),
     width: float = typer.Option(175.0, help="Bodywork width in cm."),
     mirrors: float = typer.Option(0.0, help="Width across mirrors in cm. 0 infers it."),
@@ -213,6 +216,28 @@ def search(
 ) -> None:
     """Search for parking that fits a specific vehicle."""
     _setup_logging(verbose)
+    from parkfit.domain import presets
+
+    preset = presets.get(car) if car else None
+    if car and preset is None:
+        console.print(f"[red]unknown car {car!r}[/red]. Run `pf cars` for the list.")
+        raise typer.Exit(code=2)
+    if preset is not None:
+        # Real registered dimensions replace the flag defaults entirely, rather than
+        # merging with them, so a preset search is reproducible.
+        length, width, height, weight = (
+            preset.length_cm,
+            preset.body_width_cm,
+            preset.height_cm,
+            preset.weight_kg,
+        )
+        mirrors = preset.width_with_mirrors_cm
+        # To stderr when the caller asked for JSON, or this banner lands in the middle of
+        # the document and every downstream parser chokes on it.
+        Console(stderr=as_json).print(
+            f"[dim]{preset.label}: {length:.0f} x {width:.0f} x {height:.0f} cm, "
+            f"{weight:.0f} kg  ({preset.segment}, RDW {preset.rdw_body_type})[/dim]"
+        )
     from parkfit.domain.vehicle import VehicleProfile
     from parkfit.services.search import SearchEngine, SearchPreferences, SearchRequest
     from parkfit.storage.session import session_scope
@@ -802,6 +827,37 @@ def detect_all(
         dataset="data/detector",
         frames=12,
     )
+
+
+@app.command("cars")
+def cars() -> None:
+    """The test fleet, with real dimensions from the Dutch vehicle register."""
+    from parkfit.domain import presets
+
+    table = Table(title="Test fleet (RDW registered dimensions, centimetres)")
+    table.add_column("key")
+    table.add_column("vehicle")
+    table.add_column("segment")
+    table.add_column("RDW type", style="dim")
+    for column in ("L", "W", "H", "kg"):
+        table.add_column(column, justify="right")
+
+    for preset in presets.PRESETS:
+        table.add_row(
+            preset.key,
+            preset.label,
+            preset.segment,
+            preset.rdw_body_type,
+            f"{preset.length_cm:.0f}",
+            f"{preset.body_width_cm:.0f}",
+            f"{preset.height_cm:.0f}",
+            f"{preset.weight_kg:.0f}",
+        )
+    console.print(table)
+    console.print(
+        "[dim]Width is bodywork; mirrors add 36 cm. Height excludes anything on the roof.[/dim]"
+    )
+    console.print('[dim]Use with: pf search "Dam" --car x5[/dim]')
 
 
 @app.command()
