@@ -891,6 +891,44 @@ def detect_train_real(
     real_detector.write_report(report, _pathlib.Path(report_path))
 
 
+@detect_app.command("export-real")
+def detect_export_real(
+    weights: str = typer.Option("data/models/detector_real.pt"),
+    out: str = typer.Option("data/models/detector_real.onnx"),
+    width: int = typer.Option(960),
+    height: int = typer.Option(544),
+    report_path: str = typer.Option("docs/architecture/detector_real.json"),
+) -> None:
+    """Export the real-frame detector to ONNX and write the C++ worker's spec."""
+    import pathlib as _pathlib
+
+    from parkfit.ml.export import onnx as onnx_export
+
+    _setup_logging(verbose=True)
+    result = onnx_export.export_real(
+        _pathlib.Path(weights),
+        _pathlib.Path(out),
+        width=width,
+        height=height,
+        report_path=_pathlib.Path(report_path),
+    )
+    table = Table(title="ONNX parity against PyTorch")
+    table.add_column("output")
+    table.add_column("max relative diff", justify="right")
+    for name, diff in result["diffs"].items():
+        table.add_row(name, f"{diff:.2e}")
+    console.print(table)
+    spec = result["spec"]
+    console.print(
+        f"input {spec['input_width']}x{spec['input_height']}, "
+        f"stride {spec['output_stride']}, {len(spec['class_names'])} classes"
+    )
+    if not result["ok"]:
+        console.print("[yellow]parity outside tolerance[/yellow]")
+        raise typer.Exit(code=1)
+    console.print(f"[green]exported {out} with matching spec[/green]")
+
+
 @detect_app.command("export")
 def detect_export(
     weights: str = typer.Option("data/models/detector.pt"),
