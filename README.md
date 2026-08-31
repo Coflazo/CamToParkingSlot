@@ -468,9 +468,11 @@ which turned out to be a thirty-minute walk away. That evening is the whole prod
 Then I read into it and found the scarcity is deliberate. Dutch cities cap parking on
 purpose: fewer spaces, priced higher, makes driving the inconvenient option, and the room
 and the money go into buses, trams and bike lanes instead. It works because the
-alternatives are genuinely good, so giving up the car costs you very little. Istanbul is
-the same scarcity without the alternatives, and it sits at the top of the table below for
-exactly that reason. Scarce parking is a policy in one place and a failure in the other.
+alternatives are genuinely good, so giving up the car costs you very little. Other cities
+have different transport, infrastructure and policy contexts. Istanbul sits at the top of
+the table below and may benefit from a project like this as well: making existing parking
+capacity easier to understand and navigate could reduce unnecessary searching while
+complementing the city's broader mobility priorities.
 
 So this is not a campaign for more asphalt. If parking is going to be hard on purpose,
 the least a driver deserves is to know before setting off which spaces their car actually
@@ -536,7 +538,7 @@ European cities losing 8.5 % to 14 % of on-street parking by 2040 for that reaso
 replacement, which is the entire premise of this project.
 
 Next stages go to the countries at the top of the first table. Turkey first, since Istanbul
-is both the worst ratio I found and a city with an open municipal parking dataset, then the
+has both the highest ratio I found and an open municipal parking dataset, then the
 UK and France.
 
 ### References
