@@ -208,9 +208,22 @@ class ParkingFacility(Base, ProvenanceMixin):
     open_all_year: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     exit_possible_all_day: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
+    # The `_eur` in these two names is historical, from when the pilot was Dutch-only.
+    # The actual unit is whatever `currency` says, and a reader must not assume euros:
+    # an Istanbul lot stores its hourly rate here in lira. Renaming them would rename a
+    # feature the occupancy model was trained on, which is not worth doing for cosmetics.
     tariff_eur_per_hour: Mapped[float | None] = mapped_column(Float, nullable=True)
     tariff_day_max_eur: Mapped[float | None] = mapped_column(Float, nullable=True)
     tariff_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: ISO 4217 for the two tariff columns above. Prices are never converted between
+    #: currencies: a search happens in one city, so every candidate it compares shares a
+    #: currency, and inventing an exchange rate to rank across them would be a made-up
+    #: number in the middle of the ranking.
+    currency: Mapped[str] = mapped_column(String(3), default="EUR")
+    #: ISO 3166-1 alpha-2. Chooses the legal rulebook and the clearance standard, and it
+    #: is stored rather than inferred from coordinates so a wrong guess cannot apply one
+    #: country's road law to another's streets.
+    country: Mapped[str] = mapped_column(String(2), default="NL", index=True)
 
     geocode_precision: Mapped[str | None] = mapped_column(String(30), nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
