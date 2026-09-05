@@ -9,6 +9,9 @@
 
 #include "test_framework.hpp"
 
+#include <string>
+
+#include "parkfit/fit/clearance.hpp"
 #include "parkfit/fit/vehicle_fit.hpp"
 
 using namespace parkfit::fit;
@@ -267,6 +270,57 @@ TEST_CASE("orientation parsing accepts the Dutch source values") {
     CHECK(orientation_from_dutch("Visgraat") == BayOrientation::Angled);
     CHECK(orientation_from_dutch("") == BayOrientation::Unknown);
     CHECK(orientation_from_dutch("something else") == BayOrientation::Unknown);
+}
+
+
+// --------------------------------------------------------- clearance policy
+
+TEST_CASE("clearance: the margins are physical, so every country gets the same ones") {
+    // The point of the policy is not four sets of invented numbers. A door needs the
+    // same room in Lyon as in Leiden; what varies between countries is the supply, and
+    // this product reads that from surveyed bays rather than from a standard.
+    const auto nl = clearance_for("NL");
+    for (const char* code : {"DE", "FR", "TR", "BE", ""}) {
+        const auto other = clearance_for(code);
+        CHECK_NEAR(other.margins.parallel_lateral_total_cm,
+                   nl.margins.parallel_lateral_total_cm, 1e-9);
+        CHECK_NEAR(other.margins.bay_lateral_total_cm, nl.margins.bay_lateral_total_cm, 1e-9);
+        CHECK_NEAR(other.margins.longitudinal_total_cm, nl.margins.longitudinal_total_cm, 1e-9);
+    }
+}
+
+TEST_CASE("clearance: only the Netherlands claims a standard was actually read") {
+    CHECK(clearance_for("NL").verified);
+    CHECK(!clearance_for("DE").verified);
+    CHECK(!clearance_for("FR").verified);
+    CHECK(!clearance_for("TR").verified);
+}
+
+TEST_CASE("clearance: every policy names its standard and explains itself") {
+    for (const char* code : {"NL", "DE", "FR", "TR"}) {
+        const auto policy = clearance_for(code);
+        CHECK(std::string(policy.standard).size() > 5);
+        CHECK(std::string(policy.note).size() > 20);
+        CHECK(std::string(policy.country) == std::string(code));
+    }
+}
+
+TEST_CASE("clearance: an uncatalogued country still gets an answer") {
+    // Unlike the legal rulebook, which refuses. A car that physically fits a bay fits it
+    // wherever the bay is, so refusing here would withhold a true answer.
+    const auto policy = clearance_for("PL");
+    CHECK(!policy.verified);
+    CHECK_NEAR(policy.margins.vertical_cm, Margins{}.vertical_cm, 1e-9);
+}
+
+TEST_CASE("clearance: the hard floors survive a policy lookup") {
+    // Whatever a policy says, the floors below it cannot be talked down.
+    auto policy = clearance_for("DE");
+    policy.margins.vertical_cm = 0.0;
+    policy.margins.lateral_total_cm = 0.0;
+    const auto clamped = policy.margins.clamped();
+    CHECK_NEAR(clamped.vertical_cm, Margins::kMinVerticalCm, 1e-9);
+    CHECK_NEAR(clamped.lateral_total_cm, Margins::kMinLateralTotalCm, 1e-9);
 }
 
 PF_TEST_MAIN()
