@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "parkfit/fit/vehicle.hpp"
+#include "parkfit/fit/clearance.hpp"
 #include "parkfit/fit/vehicle_fit.hpp"
 #include "parkfit/geo/polygon.hpp"
 #include "parkfit/geo/primitives.hpp"
@@ -286,6 +287,21 @@ PYBIND11_MODULE(parkfit_native, m) {
           py::arg("bay_width_cm"), py::arg("orientation"), py::arg("margins") = fit::Margins{});
     m.def("check_gap", &fit::check_gap, py::arg("vehicle"), py::arg("gap_length_cm"),
           py::arg("gap_width_cm"), py::arg("margins") = fit::Margins{});
+    py::class_<fit::ClearancePolicy>(m, "ClearancePolicy")
+        .def_readonly("country", &fit::ClearancePolicy::country)
+        .def_readonly("standard", &fit::ClearancePolicy::standard)
+        .def_readonly("verified", &fit::ClearancePolicy::verified)
+        .def_readonly("note", &fit::ClearancePolicy::note)
+        .def_readonly("margins", &fit::ClearancePolicy::margins)
+        .def("__repr__", [](const fit::ClearancePolicy& p) {
+            return std::string("ClearancePolicy(") + p.country + ", " + p.standard +
+                   ", verified=" + (p.verified ? "True" : "False") + ")";
+        });
+
+    m.def("clearance_for", &fit::clearance_for, py::arg("country"),
+          "Clearance policy for a country. The margins are physical and apply "
+          "everywhere; `verified` says whether a national standard was actually read.");
+
     m.def("required_gap_length_cm", &fit::required_gap_length_cm, py::arg("vehicle"),
           py::arg("margins") = fit::Margins{});
 
