@@ -326,6 +326,8 @@ def _legality(candidate) -> LegalityDetail | None:
         reason=verdict.reason,
         distance_m=(round(verdict.distance_cm / 100.0, 2) if verdict.distance_cm >= 0 else None),
         required_m=(round(verdict.required_cm / 100.0, 2) if verdict.required_cm >= 0 else None),
+        unchecked=[a.lower() for a in verdict.unchecked_anchors],
+        fully_checked=verdict.fully_checked,
     )
 
 

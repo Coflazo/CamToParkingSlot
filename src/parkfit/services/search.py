@@ -88,6 +88,10 @@ class SearchRequest:
     preferences: SearchPreferences = field(default_factory=SearchPreferences)
     user_id: int | None = None
     city_hint: str | None = None
+    #: ISO 3166-1 alpha-2. Chooses the national geocoder and, through the candidates
+    #: it returns, the legal rulebook. Left as None the geocoder tries everything,
+    #: which is right when the country genuinely is not known yet.
+    country: str | None = None
 
 
 @dataclass
@@ -204,7 +208,9 @@ class SearchEngine:
         search_id = uuid.uuid4().hex[:16]
         response = SearchResponse(search_id=search_id, destination=None, results=[])
 
-        destination = self.geocoder.geocode_one(request.destination, city=request.city_hint)
+        destination = self.geocoder.geocode_one(
+            request.destination, city=request.city_hint, country=request.country
+        )
         if destination is None:
             response.warnings.append(f"could not locate {request.destination!r}")
             return self._finish(response, started)

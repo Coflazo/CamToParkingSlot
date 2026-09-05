@@ -257,6 +257,15 @@ class LegalityDetail(ApiModel):
     distance_m: float | None = None
     #: What the statute required, or null when the finding is not distance-based.
     required_m: float | None = None
+    #: Rules in this country's book that could not be checked here, because nothing
+    #: supplied the map features they measure from.
+    #:
+    #: A "legal" verdict with entries here means "no rule I could check was broken",
+    #: which is a weaker claim than "no rule was broken". Surfaced rather than hidden so
+    #: a reader can tell a complete check from a partial one.
+    unchecked: list[str] = Field(default_factory=list)
+    #: True when every rule in the book had the data it needed.
+    fully_checked: bool = True
 
 
 class RecommendationResponse(ApiModel):

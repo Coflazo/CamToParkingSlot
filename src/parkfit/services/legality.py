@@ -54,6 +54,19 @@ class LegalVerdict:
     reason: str = ""
     distance_cm: float = -1.0
     required_cm: float = -1.0
+    #: Anchor kinds this country's book has rules about that nothing supplied for this
+    #: area, so those rules could not fire.
+    #:
+    #: A "legal" verdict with a non-empty list here means "no rule I could check was
+    #: broken", which is a weaker claim than "no rule was broken", and the difference is
+    #: exactly the kind a product like this must not paper over. A "prohibited" verdict
+    #: is unaffected: a rule that did fire is sound whatever else was missing.
+    unchecked_anchors: tuple[str, ...] = ()
+
+    @property
+    def fully_checked(self) -> bool:
+        """Whether every rule in the book had the data it needed."""
+        return not self.unchecked_anchors
 
     @property
     def is_unknown(self) -> bool:
@@ -92,7 +105,7 @@ class LegalityService:
     def __init__(self, settings: Settings | None = None):
         self.settings = settings or get_settings()
         self._index = None
-        self._anchor_set: anchor_ingest.AnchorSet | None = None
+        self._anchor_sets: list[anchor_ingest.AnchorSet] = []
         self._loaded = False
 
     # ---------------------------------------------------------------- state
@@ -103,8 +116,19 @@ class LegalityService:
         return native is not None and self._index is not None and len(self._index) > 0
 
     def anchor_counts(self) -> dict[str, int]:
+        """Anchors by kind, summed across every cached region."""
         self._ensure_loaded()
-        return self._anchor_set.counts() if self._anchor_set else {}
+        totals: dict[str, int] = {}
+        for anchor_set in self._anchor_sets:
+            for kind, count in anchor_set.counts().items():
+                totals[kind] = totals.get(kind, 0) + count
+        return dict(sorted(totals.items(), key=lambda kv: -kv[1]))
+
+    @property
+    def regions(self) -> list[tuple[str, tuple[float, float, float, float] | None]]:
+        """Which areas are loaded, as (country, bbox) pairs."""
+        self._ensure_loaded()
+        return [(a.country, a.bbox) for a in self._anchor_sets]
 
     def _ensure_loaded(self) -> None:
         if self._loaded:
@@ -115,34 +139,43 @@ class LegalityService:
             log.info("parkfit_native is not built; legality answers Unknown")
             return
 
-        anchor_set = anchor_ingest.load(self.settings)
-        if anchor_set is None or not anchor_set.anchors:
+        anchor_sets = [a for a in anchor_ingest.load_all(self.settings) if a.anchors]
+        if not anchor_sets:
             log.info(
-                "no legal anchors cached at %s; legality answers Unknown. "
+                "no legal anchors cached under %s; legality answers Unknown. "
                 "Populate them with: pf ingest anchors",
-                anchor_ingest.cache_path(self.settings),
+                anchor_ingest.anchor_dir(self.settings),
             )
             return
 
+        # One index across every region. The grid does not care that the points come
+        # from different cities, and a single index means a search near a border sees
+        # anchors from both sides without any special handling.
         index = native.AnchorIndex()
         rows = []
         unknown_kinds: set[str] = set()
-        for kind, lat, lon in anchor_set.anchors:
-            enum_value = getattr(native.AnchorKind, kind, None)
-            if enum_value is None:
-                # A cache written by a newer version than this binary. Dropping the row is
-                # right; inventing a kind for it would apply the wrong rule.
-                unknown_kinds.add(kind)
-                continue
-            rows.append((enum_value, lat, lon))
+        for anchor_set in anchor_sets:
+            for kind, lat, lon in anchor_set.anchors:
+                enum_value = getattr(native.AnchorKind, kind, None)
+                if enum_value is None:
+                    # A cache written by a newer version than this binary. Dropping the
+                    # row is right; inventing a kind would apply the wrong rule.
+                    unknown_kinds.add(kind)
+                    continue
+                rows.append((enum_value, lat, lon))
         if unknown_kinds:
             log.warning("anchor cache holds kinds this build does not know: %s", unknown_kinds)
 
         index.add_many(rows)
         index.build()
         self._index = index
-        self._anchor_set = anchor_set
-        log.info("legal anchors loaded: %d (%s)", len(index), anchor_set.counts())
+        self._anchor_sets = anchor_sets
+        log.info(
+            "legal anchors loaded: %d across %d region(s) %s",
+            len(index),
+            len(anchor_sets),
+            [a.country for a in anchor_sets],
+        )
 
     # ------------------------------------------------------------ querying
     def covers(self, lat: float, lon: float, *, country: str | None = None) -> bool:
@@ -161,28 +194,64 @@ class LegalityService:
         band around the edge is honestly outside coverage even though anchors exist there.
         """
         self._ensure_loaded()
-        if self._anchor_set is None or self._anchor_set.bbox is None:
-            # Anchors with no recorded extent. Their coverage cannot be established, so
-            # nothing is claimed for them beyond what the index itself contains.
-            return self._index is not None and len(self._index) > 0
+        if not self._anchor_sets:
+            return False
 
-        south, west, north, east = self._anchor_set.bbox
         book = self.rulebook(country)
         reach_m = (book.max_distance_cm / 100.0) if book is not None else 0.0
-        # Degrees per metre. Longitude is scaled by latitude, and the cosine is floored
-        # so a pole never produces an infinite margin.
-        lat_margin = reach_m / 111_320.0
-        lon_margin = lat_margin / max(0.05, math.cos(math.radians((south + north) / 2.0)))
 
-        return (
-            south + lat_margin <= lat <= north - lat_margin
-            and west + lon_margin <= lon <= east - lon_margin
-        )
+        for anchor_set in self._anchor_sets:
+            if anchor_set.bbox is None:
+                # An older cache with no recorded extent. Its coverage cannot be
+                # established, so it is accepted only on the strength of the index
+                # itself, which is how this behaved before regions existed.
+                if self._index is not None and len(self._index) > 0:
+                    return True
+                continue
+
+            south, west, north, east = anchor_set.bbox
+            # Degrees per metre. Longitude is scaled by latitude, and the cosine is
+            # floored so a pole never produces an infinite margin.
+            lat_margin = reach_m / 111_320.0
+            lon_margin = lat_margin / max(0.05, math.cos(math.radians((south + north) / 2.0)))
+            if (
+                south + lat_margin <= lat <= north - lat_margin
+                and west + lon_margin <= lon <= east - lon_margin
+            ):
+                return True
+        return False
 
     @property
     def coverage_bbox(self) -> tuple[float, float, float, float] | None:
+        """The first loaded region's extent. Prefer :attr:`regions` when more than one."""
         self._ensure_loaded()
-        return self._anchor_set.bbox if self._anchor_set else None
+        return self._anchor_sets[0].bbox if self._anchor_sets else None
+
+    def unchecked_anchors(self, lat: float, lon: float, *, country: str | None = None):
+        """Anchor kinds this book needs that nothing supplied for this point's region.
+
+        Compared against what the ingest **asked for**, not what it found. A district
+        with no fire hydrants and a district nobody looked for hydrants in produce the
+        same empty list, and only the query record separates them.
+
+        Kinds an area never queried are a real gap even when the area is otherwise
+        covered, and Turkey is the clear case: KTK 2918 has a ten-metre rule for bridges
+        and underpasses, nothing sources either yet, so a Turkish space near a bridge
+        comes back clean because that rule never ran rather than because it passed.
+        """
+        self._ensure_loaded()
+        book = self.rulebook(country)
+        if book is None or not book.complete:
+            return ()
+
+        required = {name.upper() for name in book.anchor_names}
+        for anchor_set in self._anchor_sets:
+            if anchor_set.bbox is None:
+                continue
+            south, west, north, east = anchor_set.bbox
+            if south <= lat <= north and west <= lon <= east:
+                return tuple(sorted(required - set(anchor_set.queried_kinds)))
+        return tuple(sorted(required))
 
     def rulebook(self, country: str | None = None):
         """The book for a country. Unknown codes get an incomplete one, never a substitute."""
@@ -229,8 +298,15 @@ class LegalityService:
             [points[i] for i in inside],
             [contexts[i] for i in inside] if contexts else [],
         )
+        # The gap depends only on which region a point falls in, so it is computed
+        # once per distinct region rather than once per candidate.
+        gaps: dict[tuple[float, float], tuple[str, ...]] = {}
         for position, finding in zip(inside, findings, strict=True):
-            out[position] = _to_verdict(finding)
+            lat, lon = points[position]
+            key = (round(lat, 2), round(lon, 2))
+            if key not in gaps:
+                gaps[key] = self.unchecked_anchors(lat, lon, country=code)
+            out[position] = _to_verdict(finding, gaps[key])
         return out
 
     def evaluate_one(
@@ -253,7 +329,7 @@ class LegalityService:
             lon,
             context if context is not None else native.LegalContext(),
         )
-        return _to_verdict(finding)
+        return _to_verdict(finding, self.unchecked_anchors(lat, lon, country=code))
 
     def context(
         self,
@@ -289,7 +365,7 @@ class LegalityService:
         }
 
 
-def _to_verdict(finding) -> LegalVerdict:
+def _to_verdict(finding, unchecked: tuple[str, ...] = ()) -> LegalVerdict:
     # A verdict that broke no rule has no anchor. The C++ struct carries Junction there
     # as a filler because the field is not optional, and passing that on would tell a
     # reader a legal space was judged against a junction it was never near.
@@ -302,6 +378,9 @@ def _to_verdict(finding) -> LegalVerdict:
         reason=finding.reason,
         distance_cm=finding.distance_cm,
         required_cm=finding.required_cm,
+        # Only reported on a clean verdict. A refusal already stands on a rule that
+        # fired, and listing what was not checked beside it would just be noise.
+        unchecked_anchors=unchecked if finding.verdict_name == "legal" else (),
     )
 
 
