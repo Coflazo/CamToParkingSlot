@@ -200,12 +200,31 @@ def index() -> JSONResponse:
             "docs": "/docs",
             "health": "/health",
             "api": "/v1",
+            # Every licence that requires a credit gets one here, verbatim. A paraphrased
+            # attribution is not the one the licence asked for. The machine-readable
+            # register is the `source_licences` table, written by each adapter on its
+            # first run, and `docs/data_sources/sources.md` explains the obligations.
             "attribution": [
                 "Parking register: RDW / Nationaal Parkeer Register",
                 "Live occupancy: Nationaal Dataportaal Wegverkeer (NDW)",
                 "Parking bays: Gemeente Amsterdam",
                 "Geocoding: PDOK Locatieserver (Kadaster / BZK)",
+                "Istanbul parking: Istanbul Buyuksehir Belediyesi (IBB) / ISPARK",
                 "Map data: (c) OpenStreetMap contributors, ODbL",
+                "Geocoding outside NL: (c) OpenStreetMap contributors, via Nominatim",
             ],
+            # The statutes the legality engine applies. Named because a product that
+            # refuses a parking space on legal grounds should say whose law it is using.
+            "road_law": [
+                "NL: Reglement verkeersregels en verkeerstekens 1990 (RVV 1990)",
+                "DE: Strassenverkehrs-Ordnung (StVO)",
+                "TR: Karayollari Trafik Kanunu No. 2918",
+                "FR: not yet transcribed, so French results report legality as unknown",
+            ],
+            "privacy": (
+                "No face or licence-plate recognition anywhere. Camera frames are "
+                "processed in memory and discarded. Only occupancy, geometry, confidence "
+                "and timestamps are stored."
+            ),
         }
     )
