@@ -181,6 +181,27 @@ def ingest_ispark(
     _print_ingest_table(results)
 
 
+@ingest_app.command("autobahn")
+def ingest_autobahn(
+    roads: str = typer.Option("", help="Comma-separated road list, e.g. A1,A8. Empty means all."),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """German motorway parking: capacity per rest area, never occupancy.
+
+    One request per road, 108 of them, so this is a daily job rather than something a
+    search triggers.
+    """
+    _setup_logging(verbose)
+    from parkfit.ingest.autobahn import AutobahnAdapter
+    from parkfit.storage.session import create_all
+
+    create_all()
+    wanted = [r.strip() for r in roads.split(",") if r.strip()] or None
+    with AutobahnAdapter() as adapter:
+        result = adapter.run(roads=wanted)
+    _print_ingest_table([result])
+
+
 @ingest_app.command("anchors")
 def ingest_anchors(
     south: float = 52.33,
