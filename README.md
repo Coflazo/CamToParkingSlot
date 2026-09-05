@@ -39,11 +39,16 @@ You need git, Node 20+ and ffmpeg on PATH first. Everything else it handles.
 
 Type where you are going and pick which car you drive. Results are ranked by what parking
 actually costs you, meaning drive time plus walk time plus price plus the chance the space
-is gone when you arrive, and filtered to spaces the car fits.
+is gone when you arrive, filtered to spaces the car fits, and filtered again to spaces you
+may legally use.
 
 The line under the search box reads "308 considered within 800 m, ruled out: 103 too large
 for your vehicle, 87 not permitted". Switch to a Sprinter and the kerb bays vanish, because
 a 5.7 m bay cannot take a 7 m van.
+
+It started in the Netherlands and now covers four countries: the Netherlands, Türkiye,
+Germany and France. Each one brought a different weakness to the surface, which is the
+useful part of adding them.
 
 ---
 
@@ -68,6 +73,105 @@ is not. Accuracy on its own hides it. A detector that calls every space occupied
 well on accuracy and is useless, and one that invents a free space now and then sends
 someone across a city for nothing. 10 of 1,225 truly vacant trials came out wrong in the
 unsafe direction.
+
+---
+
+## Not every empty space is a legal one
+
+A space can be empty, measured, wide enough and cheap, and still be one you must not use.
+Five metres from a junction. Inside a bus stop's markings. In front of a fire hydrant.
+Fitting is a physical question and it is not the whole question, and until recently
+nothing in this product could tell the difference.
+
+It can now, and it says which article it is using.
+
+```
+Beşiktaş, Istanbul          prohibited   KTK 2918 md. 61(d)
+                                         within five metres of a designated fire hydrant
+```
+
+The statutes live in `cpp/core/include/parkfit/legal/` as rule tables, transcribed from
+primary sources. Every rule carries the article it came from, so a refusal can be shown to
+you and argued with, which a silently missing result cannot.
+
+Reading the actual texts changed three numbers a summary would have got wrong. The Dutch
+bus-stop setback is **12 m**, not the German 15 m that nearly every summary gives by
+analogy. Turkey's articles are **60 and 61**, not 61 and 62. And Germany's 15 m rule lives
+in **Anlage 2, Zeichen 224**, not in §12, so citing §12 for it would put a wrong article in
+front of a driver.
+
+It also kept a real difference rather than flattening it. A fire hydrant is protected in
+Istanbul and not in Amsterdam or Berlin, because RVV articles 23 and 24 do not mention
+hydrants and StVO §12 protects marked fire-brigade *access ways* instead. Making the three
+agree would have meant inventing law.
+
+| | instrument | rules | reach |
+|---|---|---:|---:|
+| Netherlands | RVV 1990, art. 23 to 25 | 13 | 12 m |
+| Germany | StVO §12, Anlage 2 Zeichen 224 | 8 | 15 m |
+| Türkiye | Karayolları Trafik Kanunu 2918, md. 60 to 61 | 19 | 100 m |
+| France | Code de la route R417-9 to R417-13 | **0** | **not transcribed** |
+
+**France answers "unknown", never "legal".** Legifrance sits behind Cloudflare, the open
+data dump is 1.1 GB and fourteen months stale, and the one verbatim mirror serves an
+explicit anti-bot challenge which I left alone. An empty rule table breaks no rules, so
+without a flag saying so the product would have declared every space in Paris legal on the
+strength of no legal work at all.
+
+That asymmetry is the whole design. **Unknown never becomes legal**: not for a missing
+rulebook, not for a country nobody has written rules for, and not for a place the data
+does not reach. An anchor index holding 4,477 Amsterdam features is not empty, so an
+Istanbul query once swept it, found nothing within a hundred metres because everything in
+it was two thousand kilometres away, broke no rules and came back **legal**, which is
+indistinguishable from a space that was actually checked. Coverage is explicit now, and
+the usable area is the ingested box eroded by the rulebook's own reach, because a point
+three metres inside the edge could have a hydrant four metres beyond it that nobody
+collected.
+
+A clean verdict also lists what could not be checked. Amsterdam reports seven rule types
+with no data behind them, all sourced from bay records rather than from the map; Istanbul
+reports six including bridges and underpasses. "No rule I could check was broken" is a
+weaker claim than "no rule was broken", and the difference is exactly the kind a product
+like this must not paper over.
+
+The rules measure from ordinary map features, which is what makes this travel. Explicit
+parking restrictions are mapped densely almost nowhere: Berlin has 2,762 ways carrying the
+OSM parking schema, Paris 88, Istanbul 50, Amsterdam 33. Bus stops, crossings and hydrants
+are everywhere, because that is what a map is for. Encoding the statute and measuring to
+those turns a data-coverage problem into a geometry problem, and 400 candidates against
+20,000 anchors takes 7 ms.
+
+---
+
+## Four countries
+
+| | facilities | spaces | height limits | live occupancy |
+|---|---:|---:|---:|:--|
+| Netherlands | 5,241 | 135,781 | 190 | NDW, DATEX II |
+| Germany | 1,799 | 60,294 | 0 | none published |
+| France | 826 | 270,559 | **692** | none published |
+| Türkiye | 248 | 80,987 | 0 | **İSPARK, live free counts** |
+
+Each one is strong exactly where the others are weak, which is what forced the schema to
+represent absence properly rather than assume one country's data shape.
+
+Istanbul's municipality publishes what the Netherlands needed two sources to assemble:
+every İSPARK site with the operator's own count of its own free spaces, keyless, from one
+endpoint, with a timestamp. 51 of its 248 sites are `YOL ÜSTÜ`, on-street, which are
+exactly the spaces this product is about. Prices are in lira and are never converted; a
+search happens in one city, so its candidates share a currency, and an invented exchange
+rate in the middle of a cost calculation would be a made-up number dressed as a
+measurement.
+
+France earns its place on one column. 84 % of its sites publish a height limit, against
+190 of 5,241 Dutch rows and none at all from the German feed, and height is the dimension
+a barrier physically stops a van at.
+
+Germany publishes capacity and not occupancy, so it says how many spaces exist rather than
+how many are free. Those are different claims, and conflating them would turn "20 car
+spaces" into "20 free car spaces" at exactly the moment a driver decides to stop. They are
+recorded a rung lower in the evidence ladder, with the vacant count left unset rather than
+guessed.
 
 ---
 
@@ -596,5 +700,12 @@ Vite and MapLibre. SQLite by default, PostgreSQL and PostGIS optionally. No Open
 homography, the Jacobi eigensolver, the RANSAC and the perceptual hashing are written
 here.
 
-194 Python tests, 8 C++ suites. Data from RDW, NDW, PDOK, OpenStreetMap, the City of
-Amsterdam and CNRPark-EXT, each licence recorded in `docs/data_sources/sources.md`.
+C++ owns the geometry and the rules that run per request: the road graph, the legality
+engine, vehicle fit, the spatial index, ranking, and the kerb-gap finder behind the
+cameras. Python owns ingest, training, and the API. Where a module exists in both
+languages, a contract test holds the two to the same answer, because a readable reference
+implementation is only useful while it still agrees with the one that ships.
+
+398 Python tests, 10 C++ suites. Data from RDW, NDW, PDOK, OpenStreetMap, the City of
+Amsterdam, İSPARK, Autobahn GmbH, transport.data.gouv.fr and CNRPark-EXT, each licence and
+attribution recorded in `docs/data_sources/sources.md`.
