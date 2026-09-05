@@ -245,7 +245,12 @@ class RoutingService:
             if not provider.available() or not hasattr(provider, "_ensure_router"):
                 continue
             try:
-                router = provider._ensure_router()
+                # The origin is passed so a provider holding several regional graphs can
+                # pick the one that actually covers this search. Without it a two-city
+                # deployment would answer an Istanbul query from the Amsterdam extract,
+                # snap both endpoints to Dutch streets, and return a plausible distance
+                # for a route on the wrong continent.
+                router = provider._ensure_router(from_lat, from_lon)
                 results = router.many_costs(
                     from_lat, from_lon, targets, profile, max_seconds=max_seconds
                 )

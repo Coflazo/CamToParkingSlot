@@ -719,67 +719,174 @@ class NativeRoadRouter:
         )
 
 
+def region_key(country: str, bbox: tuple[float, float, float, float]) -> str:
+    """A stable filename for one cached road graph."""
+    south, west, north, east = bbox
+    return f"{country.upper()}_{south:.3f}_{west:.3f}_{north:.3f}_{east:.3f}".replace("-", "m")
+
+
+@dataclass(frozen=True)
+class GraphRegion:
+    """One cached graph and the area it covers."""
+
+    path: Path
+    country: str
+    bbox: tuple[float, float, float, float] | None
+
+    def contains(self, lat: float, lon: float) -> bool:
+        if self.bbox is None:
+            # A legacy cache with no recorded extent. Its area is unknown, so it is
+            # tried rather than assumed to cover or not cover a point; the router's own
+            # snapping will fail honestly if the point is nowhere near it.
+            return True
+        south, west, north, east = self.bbox
+        return south <= lat <= north and west <= lon <= east
+
+
 class NativeGraphProvider(RoutingProvider):
-    """Routing provider backed by a locally cached OSM graph."""
+    """Routing over locally cached OSM graphs, one per ingested region.
+
+    A single graph was fine while the product was Dutch. It is not fine now: ingesting
+    Istanbul overwrote Amsterdam, so a second city could only ever be added by losing the
+    first. Graphs are keyed by country and bounding box, loaded lazily, and chosen by
+    which one actually contains the origin. A point no cached graph covers raises
+    ``RoutingUnavailableError``, which is what makes the routing service fall through to
+    OSRM or to the straight-line estimator rather than routing through the wrong city.
+
+    Loaded graphs are kept. A city extract is a second to parse and tens of megabytes in
+    memory, so a process that serves two cities holds two and a process that serves one
+    holds one.
+    """
 
     name = "native-graph"
 
     def __init__(self, settings: Settings | None = None):
         self.settings = settings or get_settings()
-        self._router: RoadRouter | NativeRoadRouter | None = None
-        self._load_attempted = False
+        self._routers: dict[Path, RoadRouter | NativeRoadRouter] = {}
+        self._failed: set[Path] = set()
+
+    @property
+    def graph_dir(self) -> Path:
+        return self.settings.data_dir / "osm" / "graphs"
 
     @property
     def cache_path(self) -> Path:
+        """The legacy single-graph path, still read so an existing cache keeps working."""
         return self.settings.data_dir / "osm" / "road_graph.json.gz"
 
-    def available(self) -> bool:
-        if self._router is not None:
-            return True
-        if self._load_attempted:
-            return False
-        return self.cache_path.exists()
+    def regions(self) -> list[GraphRegion]:
+        """Every cached graph, legacy first."""
+        found: list[GraphRegion] = []
+        if self.cache_path.exists():
+            found.append(GraphRegion(self.cache_path, "NL", None))
+        if self.graph_dir.exists():
+            for path in sorted(self.graph_dir.glob("*.json.gz")):
+                found.append(GraphRegion(path, *_parse_region(path)))
+        return found
 
-    def _ensure_router(self) -> RoadRouter | NativeRoadRouter:
-        if self._router is not None:
-            return self._router
-        self._load_attempted = True
-        if not self.cache_path.exists():
-            raise RoutingUnavailableError(
-                f"no cached road graph at {self.cache_path}; run: pf ingest roads"
-            )
-        with gzip.open(self.cache_path, "rt", encoding="utf-8") as handle:
+    def available(self) -> bool:
+        return bool(self._routers) or bool(self.regions())
+
+    def _load(self, region: GraphRegion) -> RoadRouter | NativeRoadRouter:
+        cached = self._routers.get(region.path)
+        if cached is not None:
+            return cached
+
+        with gzip.open(region.path, "rt", encoding="utf-8") as handle:
             payload = json.load(handle)
 
         from parkfit.native import native
 
         if native is not None:
-            self._router = NativeRoadRouter.from_payload(payload)
-            return self._router
+            router: RoadRouter | NativeRoadRouter = NativeRoadRouter.from_payload(payload)
+        else:
+            graph = Graph(
+                nodes={int(k): (v[0], v[1]) for k, v in payload["nodes"].items()},
+                car_edges={
+                    int(k): [(int(n), float(d), float(s)) for n, d, s in v]
+                    for k, v in payload["car_edges"].items()
+                },
+                foot_edges={
+                    int(k): [(int(n), float(d), float(s)) for n, d, s in v]
+                    for k, v in payload["foot_edges"].items()
+                },
+            )
+            log.info("loaded cached road graph %s: %d nodes (pure Python)", region.path.name, len(graph))
+            router = RoadRouter(graph)
 
-        graph = Graph(
-            nodes={int(k): (v[0], v[1]) for k, v in payload["nodes"].items()},
-            car_edges={
-                int(k): [(int(n), float(d), float(s)) for n, d, s in v]
-                for k, v in payload["car_edges"].items()
-            },
-            foot_edges={
-                int(k): [(int(n), float(d), float(s)) for n, d, s in v]
-                for k, v in payload["foot_edges"].items()
-            },
-        )
-        log.info("loaded cached road graph: %d nodes (pure Python)", len(graph))
-        self._router = RoadRouter(graph)
-        return self._router
+        self._routers[region.path] = router
+        return router
+
+    def router_for(self, lat: float, lon: float) -> RoadRouter | NativeRoadRouter:
+        """The cached graph covering this point.
+
+        Regions whose extent is recorded and does not contain the point are skipped
+        without being read, which is what keeps a two-city deployment from parsing an
+        Amsterdam extract to answer a query in Istanbul.
+        """
+        regions = self.regions()
+        if not regions:
+            raise RoutingUnavailableError(
+                f"no cached road graph under {self.graph_dir}; run: pf ingest roads"
+            )
+
+        candidates = [r for r in regions if r.contains(lat, lon)]
+        if not candidates:
+            raise RoutingUnavailableError(
+                f"no cached road graph covers ({lat:.4f}, {lon:.4f}); "
+                f"run: pf ingest roads for that area"
+            )
+
+        errors: list[str] = []
+        for region in candidates:
+            if region.path in self._failed:
+                continue
+            try:
+                return self._load(region)
+            except Exception as exc:
+                # A corrupt or truncated cache should not take the whole provider down
+                # when another region could still answer.
+                log.warning("road graph %s is unusable: %s", region.path.name, exc)
+                self._failed.add(region.path)
+                errors.append(f"{region.path.name}: {exc}")
+        raise RoutingUnavailableError("; ".join(errors) or "no usable road graph")
+
+    def _ensure_router(self, lat: float | None = None, lon: float | None = None):
+        """The router for a point, or the only one when no point is given.
+
+        ``RoutingService.many_routes`` duck-types on this method, so its no-argument form
+        has to keep working. With one cached region that is unambiguous; with several it
+        needs a point, and the routing service passes one.
+        """
+        if lat is not None and lon is not None:
+            return self.router_for(lat, lon)
+        regions = self.regions()
+        if not regions:
+            raise RoutingUnavailableError(
+                f"no cached road graph under {self.graph_dir}; run: pf ingest roads"
+            )
+        return self._load(regions[0])
 
     def route(
         self, from_lat: float, from_lon: float, to_lat: float, to_lon: float, profile: Profile
     ) -> RouteResult:
-        return self._ensure_router().route(from_lat, from_lon, to_lat, to_lon, profile)
+        return self.router_for(from_lat, from_lon).route(
+            from_lat, from_lon, to_lat, to_lon, profile
+        )
 
-    def save_graph(self, graph: Graph) -> Path:
-        path = self.cache_path
+    def save_graph(
+        self,
+        graph: Graph,
+        *,
+        country: str = "NL",
+        bbox: tuple[float, float, float, float] | None = None,
+    ) -> Path:
+        if bbox is None:
+            path = self.cache_path
+        else:
+            path = self.graph_dir / f"{region_key(country, bbox)}.json.gz"
         path.parent.mkdir(parents=True, exist_ok=True)
+
         payload = {
             "nodes": {str(k): [v[0], v[1]] for k, v in graph.nodes.items()},
             "car_edges": {
@@ -796,9 +903,24 @@ class NativeGraphProvider(RoutingProvider):
 
         from parkfit.native import native
 
-        self._router = NativeRoadRouter.from_graph(graph) if native is not None else RoadRouter(graph)
-        self._load_attempted = False
+        self._routers[path] = (
+            NativeRoadRouter.from_graph(graph) if native is not None else RoadRouter(graph)
+        )
+        self._failed.discard(path)
         return path
+
+
+def _parse_region(path: Path) -> tuple[str, tuple[float, float, float, float] | None]:
+    """Recover the country and box a graph filename encodes."""
+    stem = path.name.replace(".json.gz", "")
+    parts = stem.split("_")
+    if len(parts) != 5:
+        return "NL", None
+    try:
+        numbers = [float(p.replace("m", "-")) for p in parts[1:]]
+    except ValueError:
+        return parts[0], None
+    return parts[0], (numbers[0], numbers[1], numbers[2], numbers[3])
 
 
 def haversine_bearing_fallback(lat1: float, lon1: float, lat2: float, lon2: float) -> float:

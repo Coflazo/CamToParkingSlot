@@ -378,6 +378,7 @@ def ingest_roads(
     west: float = 4.82,
     north: float = 52.41,
     east: float = 4.97,
+    country: str = "NL",
     timeout: int = 180,
 ) -> IngestResult:
     """Build and cache the routable road graph for a bounding box.
@@ -406,7 +407,9 @@ def ingest_roads(
         result.finished_at = utcnow()
         return result
 
-    path = NativeGraphProvider(adapter.settings).save_graph(graph)
+    path = NativeGraphProvider(adapter.settings).save_graph(
+        graph, country=country, bbox=(south, west, north, east)
+    )
     result.created = len(graph.nodes)
     result.finished_at = utcnow()
     log.info("road graph cached at %s (%d nodes)", path, len(graph.nodes))
