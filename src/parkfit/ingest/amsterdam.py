@@ -28,8 +28,9 @@ import httpx
 from sqlalchemy import delete, select
 
 from parkfit.geo.rd import rd_in_range, rd_to_wgs84, ring_centroid_rd
-from parkfit.geo.shapes import measure_bay
+from parkfit.geo.shapes import measure_bay as measure_bay_python
 from parkfit.ingest.base import BaseAdapter, IngestResult, SourceMeta
+from parkfit.native import native
 from parkfit.storage.models import (
     BayOrientation,
     ParkingBay,
@@ -40,6 +41,13 @@ from parkfit.storage.models import (
 from parkfit.storage.session import session_scope
 
 log = logging.getLogger(__name__)
+
+#: ``parkfit.geo.shapes.measure_bay`` and ``parkfit::geo::measure_bay`` are the same
+#: algorithm written twice, and ``tests/contract/test_geometry_parity.py`` holds them to
+#: the same answers. One ingest run measures every bay Amsterdam publishes, currently
+#: about 210k of them, so the C++ one is worth using whenever it is there. The Python one
+#: stays as the parity reference and as the answer on an uncompiled checkout.
+measure_bay = native.measure_bay if native is not None else measure_bay_python
 
 
 class _NullContext:

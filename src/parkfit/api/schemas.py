@@ -235,6 +235,30 @@ class NavigationResponse(ApiModel):
     links: list[NavigationLinkResponse] = Field(default_factory=list)
 
 
+class LegalityDetail(ApiModel):
+    """Whether road law allows parking here, and which article says so.
+
+    The citation is the point. A product that silently drops a space teaches the driver
+    nothing and cannot be checked; one that says "KTK 2918 md. 61(d), five metres from a
+    fire hydrant" can be argued with, which is the only kind of claim worth making.
+    """
+
+    #: legal, prohibited, conditional or unknown. Never absent.
+    verdict: str
+    #: True for legal and conditional. Unknown is not permission, so it is false.
+    allowed: bool
+    #: The map feature the rule measures from, e.g. fire_hydrant, pedestrian_crossing.
+    anchor: str = ""
+    #: The article, verbatim enough to look up.
+    citation: str = ""
+    #: What the rule protects, in plain words.
+    reason: str = ""
+    #: Measured distance to the anchor, or null when the finding is not distance-based.
+    distance_m: float | None = None
+    #: What the statute required, or null when the finding is not distance-based.
+    required_m: float | None = None
+
+
 class RecommendationResponse(ApiModel):
     id: str
     kind: str
@@ -256,6 +280,7 @@ class RecommendationResponse(ApiModel):
     bay_width_cm: float = 0.0
     orientation: str = ""
     restriction_warnings: list[str] = Field(default_factory=list)
+    legality: LegalityDetail | None = None
     is_exact_space: bool = False
     expires_at: datetime | None = None
     navigation: NavigationResponse | None = None
@@ -268,6 +293,12 @@ class SearchResponse(ApiModel):
     considered: int
     merged_duplicates: int
     rejected_illegal: int
+    #: Refused by a statutory setback (a hydrant, a crossing, a junction) rather than by
+    #: the sign or time regime recorded on the bay itself.
+    rejected_setback: int = 0
+    #: Offered, but with legality unproven because no anchor data covers the area. Shown
+    #: because a count of unchecked results is information the reader is entitled to.
+    legality_unknown: int = 0
     rejected_fit: int
     rejected_walk: int
     radius_m: float
