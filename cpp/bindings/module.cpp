@@ -15,8 +15,11 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <algorithm>
 #include <cstdint>
+#include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "parkfit/fit/vehicle.hpp"
@@ -25,8 +28,14 @@
 #include "parkfit/geo/primitives.hpp"
 #include "parkfit/geo/rd.hpp"
 #include "parkfit/index/grid.hpp"
+#include "parkfit/legal/rulebook.hpp"
+#include "parkfit/legal/rulebook_de.hpp"
+#include "parkfit/legal/rulebook_fr.hpp"
+#include "parkfit/legal/rulebook_nl.hpp"
+#include "parkfit/legal/rulebook_tr.hpp"
 #include "parkfit/nav/deeplink.hpp"
 #include "parkfit/rank/score.hpp"
+#include "parkfit/routing/graph.hpp"
 
 namespace py = pybind11;
 using namespace parkfit;
@@ -374,4 +383,355 @@ PYBIND11_MODULE(parkfit_native, m) {
     m.def("build_nav_links", &nav::build_links, py::arg("target"),
           py::arg("origin") = nav::NavOrigin{},
           "Every navigation handoff URL for one exact destination.");
+
+    // --------------------------------------------------------------- legal
+    //
+    // Where a car may legally stop or park. This sits beside the fit engine rather than
+    // inside it: fit answers whether the car goes there, legality answers whether the
+    // driver may leave it there, and a space needs both. Every verdict carries the
+    // article it came from, so a refusal can be shown to the user in the words of the
+    // statute instead of as an unexplained absence.
+
+    py::enum_<legal::Manoeuvre>(m, "Manoeuvre")
+        .value("STOPPING", legal::Manoeuvre::Stopping)
+        .value("PARKING", legal::Manoeuvre::Parking)
+        .def("__str__", [](legal::Manoeuvre v) { return std::string(legal::to_string(v)); });
+
+    py::enum_<legal::LegalVerdict>(m, "LegalVerdict")
+        .value("LEGAL", legal::LegalVerdict::Legal)
+        .value("PROHIBITED", legal::LegalVerdict::Prohibited)
+        .value("CONDITIONAL", legal::LegalVerdict::Conditional)
+        .value("UNKNOWN", legal::LegalVerdict::Unknown)
+        .def("__str__", [](legal::LegalVerdict v) { return std::string(legal::to_string(v)); });
+
+    py::enum_<legal::AnchorKind>(m, "AnchorKind")
+        .value("JUNCTION", legal::AnchorKind::Junction)
+        .value("JUNCTION_WITH_CYCLE_PATH", legal::AnchorKind::JunctionWithCyclePath)
+        .value("PEDESTRIAN_CROSSING", legal::AnchorKind::PedestrianCrossing)
+        .value("LEVEL_CROSSING", legal::AnchorKind::LevelCrossing)
+        .value("BUS_STOP_SIGN", legal::AnchorKind::BusStopSign)
+        .value("TRAM_STOP", legal::AnchorKind::TramStop)
+        .value("FIRE_HYDRANT", legal::AnchorKind::FireHydrant)
+        .value("DRIVEWAY", legal::AnchorKind::Driveway)
+        .value("BRIDGE", legal::AnchorKind::Bridge)
+        .value("UNDERPASS", legal::AnchorKind::Underpass)
+        .value("TUNNEL", legal::AnchorKind::Tunnel)
+        .value("CYCLE_LANE", legal::AnchorKind::CycleLane)
+        .value("FOOTWAY", legal::AnchorKind::Footway)
+        .value("EMERGENCY_ACCESS", legal::AnchorKind::EmergencyAccess)
+        .value("PUBLIC_ENTRANCE", legal::AnchorKind::PublicEntrance)
+        .value("DISABLED_BAY", legal::AnchorKind::DisabledBay)
+        .value("LOADING_BAY", legal::AnchorKind::LoadingBay)
+        .value("BUS_LANE", legal::AnchorKind::BusLane)
+        .value("YELLOW_LINE_SOLID", legal::AnchorKind::YellowLineSolid)
+        .value("YELLOW_LINE_BROKEN", legal::AnchorKind::YellowLineBroken)
+        .def("__str__", [](legal::AnchorKind v) { return std::string(legal::to_string(v)); });
+
+    py::class_<legal::Context>(m, "LegalContext")
+        .def(py::init<>())
+        .def_readwrite("built_up", &legal::Context::built_up)
+        .def_readwrite("road_has_marked_bays", &legal::Context::road_has_marked_bays)
+        .def_readwrite("inside_marked_bay", &legal::Context::inside_marked_bay)
+        .def_readwrite("permit_zone_without_permit", &legal::Context::permit_zone_without_permit)
+        .def_readwrite("disc_zone", &legal::Context::disc_zone)
+        .def_readwrite("anchors_loaded", &legal::Context::anchors_loaded);
+
+    py::class_<legal::LegalFinding>(m, "LegalFinding")
+        .def_readonly("verdict", &legal::LegalFinding::verdict)
+        .def_readonly("anchor", &legal::LegalFinding::anchor)
+        .def_readonly("distance_cm", &legal::LegalFinding::distance_cm)
+        .def_readonly("required_cm", &legal::LegalFinding::required_cm)
+        .def_readonly("citation", &legal::LegalFinding::citation)
+        .def_readonly("reason", &legal::LegalFinding::reason)
+        .def_property_readonly(
+            "verdict_name",
+            [](const legal::LegalFinding& f) { return std::string(legal::to_string(f.verdict)); })
+        .def_property_readonly(
+            "anchor_name",
+            [](const legal::LegalFinding& f) { return std::string(legal::to_string(f.anchor)); })
+        .def_property_readonly("allowed",
+                               [](const legal::LegalFinding& f) {
+                                   // Conditional counts as allowed-with-a-condition, and
+                                   // Unknown deliberately does not count as allowed.
+                                   return f.verdict == legal::LegalVerdict::Legal ||
+                                          f.verdict == legal::LegalVerdict::Conditional;
+                               })
+        .def("__repr__", [](const legal::LegalFinding& f) {
+            return std::string("LegalFinding(") + legal::to_string(f.verdict) + ", " +
+                   legal::to_string(f.anchor) + ", " + f.citation + ")";
+        });
+
+    py::class_<legal::Rulebook>(m, "Rulebook")
+        .def_readonly("country", &legal::Rulebook::country)
+        .def_readonly("instrument", &legal::Rulebook::instrument)
+        .def_readonly("complete", &legal::Rulebook::complete)
+        .def_property_readonly("rule_count",
+                               [](const legal::Rulebook& b) { return b.rules.size(); })
+        .def_property_readonly("max_distance_cm", [](const legal::Rulebook& b) {
+            return legal::max_distance_cm(b);
+        })
+        .def_property_readonly(
+            "citations",
+            [](const legal::Rulebook& b) {
+                // Every distinct article the book rests on, for the attribution line.
+                std::vector<std::string> out;
+                for (const auto& rule : b.rules) {
+                    std::string citation(rule.citation);
+                    if (std::find(out.begin(), out.end(), citation) == out.end()) {
+                        out.push_back(citation);
+                    }
+                }
+                return out;
+            })
+        .def("__repr__", [](const legal::Rulebook& b) {
+            return std::string("Rulebook(") + b.country + ", " +
+                   std::to_string(b.rules.size()) + " rules, complete=" +
+                   (b.complete ? "True" : "False") + ")";
+        });
+
+    py::class_<legal::AnchorIndex>(m, "AnchorIndex")
+        .def(py::init<>())
+        .def("__len__", &legal::AnchorIndex::size)
+        .def("reserve", &legal::AnchorIndex::reserve, py::arg("n"))
+        .def("build", &legal::AnchorIndex::build)
+        .def("clear", &legal::AnchorIndex::clear)
+        .def(
+            "add",
+            [](legal::AnchorIndex& index, legal::AnchorKind kind, double lat, double lon) {
+                index.add(kind, geo::LatLon{lat, lon});
+            },
+            py::arg("kind"), py::arg("lat"), py::arg("lon"))
+        .def(
+            "add_many",
+            [](legal::AnchorIndex& index,
+               const std::vector<std::tuple<legal::AnchorKind, double, double>>& items) {
+                index.reserve(index.size() + items.size());
+                for (const auto& [kind, lat, lon] : items) {
+                    index.add(kind, geo::LatLon{lat, lon});
+                }
+            },
+            py::arg("items"),
+            "Bulk insert (kind, lat, lon) triples. One crossing of the boundary instead "
+            "of one per row.");
+
+    m.def("rulebook_nl", &legal::nl::rulebook, "RVV 1990, articles 23 to 25.");
+    m.def("rulebook_de", &legal::de::rulebook, "StVO paragraph 12 and Zeichen 224.");
+    m.def("rulebook_tr", &legal::tr::rulebook, "Karayollari Trafik Kanunu 2918, articles 60-61.");
+    m.def("rulebook_fr", &legal::fr::rulebook,
+          "France: deliberately empty and marked incomplete, so it answers UNKNOWN.");
+
+    m.def(
+        "rulebook_for",
+        [](const std::string& country) {
+            if (country == "NL") return legal::nl::rulebook();
+            if (country == "DE") return legal::de::rulebook();
+            if (country == "TR") return legal::tr::rulebook();
+            if (country == "FR") return legal::fr::rulebook();
+            // An unknown country gets an incomplete book, which answers UNKNOWN rather
+            // than allowing everything. Falling back to the Dutch rules here would apply
+            // Dutch law in a country that does not have it, quietly and confidently.
+            return legal::Rulebook{"??", "no rulebook for this country", {}, false};
+        },
+        py::arg("country"),
+        "The rulebook for an ISO 3166-1 alpha-2 code. Unknown codes get an incomplete "
+        "book, never a substitute country's rules.");
+
+    m.def(
+        "legal_evaluate",
+        [](const legal::Rulebook& book, legal::Manoeuvre manoeuvre,
+           const std::vector<std::tuple<legal::AnchorKind, double>>& hits,
+           const legal::Context& context) {
+            std::vector<legal::AnchorHit> measured;
+            measured.reserve(hits.size());
+            for (const auto& [kind, distance_cm] : hits) {
+                measured.push_back(legal::AnchorHit{kind, distance_cm});
+            }
+            return legal::evaluate(book, manoeuvre, measured, context);
+        },
+        py::arg("book"), py::arg("manoeuvre"), py::arg("hits"),
+        py::arg("context") = legal::Context{},
+        "Judge one point from already-measured (kind, distance_cm) hits.");
+
+    m.def(
+        "legal_violations",
+        [](const legal::Rulebook& book, legal::Manoeuvre manoeuvre,
+           const std::vector<std::tuple<legal::AnchorKind, double>>& hits,
+           const legal::Context& context) {
+            std::vector<legal::AnchorHit> measured;
+            measured.reserve(hits.size());
+            for (const auto& [kind, distance_cm] : hits) {
+                measured.push_back(legal::AnchorHit{kind, distance_cm});
+            }
+            return legal::violations(book, manoeuvre, measured, context);
+        },
+        py::arg("book"), py::arg("manoeuvre"), py::arg("hits"),
+        py::arg("context") = legal::Context{},
+        "Every rule this point breaks, worst first, not just the leading one.");
+
+    m.def(
+        "legal_evaluate_at",
+        [](const legal::Rulebook& book, legal::Manoeuvre manoeuvre, legal::AnchorIndex& anchors,
+           double lat, double lon, const legal::Context& context) {
+            return legal::evaluate_at(book, manoeuvre, anchors, geo::LatLon{lat, lon}, context);
+        },
+        py::arg("book"), py::arg("manoeuvre"), py::arg("anchors"), py::arg("lat"), py::arg("lon"),
+        py::arg("context") = legal::Context{},
+        "Judge one point, sweeping the index at the radius the book itself requires.");
+
+    m.def(
+        "legal_evaluate_many",
+        [](const legal::Rulebook& book, legal::Manoeuvre manoeuvre, legal::AnchorIndex& anchors,
+           const std::vector<std::pair<double, double>>& points,
+           const std::vector<legal::Context>& contexts, const legal::Context& shared) {
+            if (!contexts.empty() && contexts.size() != points.size()) {
+                throw std::invalid_argument(
+                    "legal_evaluate_many: contexts must be empty or one per point");
+            }
+            std::vector<geo::LatLon> at;
+            at.reserve(points.size());
+            for (const auto& [lat, lon] : points) at.push_back(geo::LatLon{lat, lon});
+            return legal::evaluate_many(book, manoeuvre, anchors, at, contexts, shared);
+        },
+        py::arg("book"), py::arg("manoeuvre"), py::arg("anchors"), py::arg("points"),
+        py::arg("contexts") = std::vector<legal::Context>{},
+        py::arg("shared") = legal::Context{},
+        "Judge many (lat, lon) points in one call. 400 candidates against 20k anchors "
+        "costs about 7 ms.");
+
+    // ------------------------------------------------------------- routing
+    //
+    // Everything here is bulk. A Dutch city extract is ~188k nodes and several hundred
+    // thousand directed edges, so an interface that crossed the boundary once per node
+    // would spend more time in pybind than the sweep itself takes. Nodes and edges go
+    // across as parallel flat lists, which Python builds with one comprehension each
+    // and pybind converts in a single pass.
+    //
+    // Node ids on this interface are OSM ids, not the dense internal indices, so a
+    // caller never has to know that the graph renumbers anything.
+
+    py::enum_<routing::Profile>(m, "Profile")
+        .value("CAR", routing::Profile::Car)
+        .value("FOOT", routing::Profile::Foot);
+
+    py::class_<routing::Leg>(m, "Leg")
+        .def_readonly("ok", &routing::Leg::ok)
+        .def_readonly("distance_m", &routing::Leg::distance_m)
+        .def_readonly("duration_min", &routing::Leg::duration_min)
+        .def_readonly("confidence", &routing::Leg::confidence)
+        .def_readonly("path", &routing::Leg::path,
+                      "Dense node indices along the route, empty for sweep results.");
+
+    py::class_<routing::RoadGraph>(m, "RoadGraph")
+        .def(py::init<>())
+        .def("__len__", &routing::RoadGraph::node_count)
+        .def("node_count", &routing::RoadGraph::node_count)
+        .def("build", &routing::RoadGraph::build,
+             "Compress staged edges into CSR. Call once after all add_* calls.")
+        .def(
+            "add_nodes",
+            [](routing::RoadGraph& g, const std::vector<std::int64_t>& ids,
+               const std::vector<double>& lats, const std::vector<double>& lons) {
+                if (ids.size() != lats.size() || ids.size() != lons.size()) {
+                    throw std::invalid_argument("add_nodes: ids, lats and lons must be equal length");
+                }
+                g.reserve_nodes(g.node_count() + ids.size());
+                for (std::size_t i = 0; i < ids.size(); ++i) g.add_node(ids[i], lats[i], lons[i]);
+            },
+            py::arg("ids"), py::arg("lats"), py::arg("lons"),
+            "Bulk add nodes from parallel lists of OSM id, latitude and longitude.")
+        .def(
+            "add_edges",
+            [](routing::RoadGraph& g, routing::Profile profile,
+               const std::vector<std::int64_t>& from, const std::vector<std::int64_t>& to,
+               const std::vector<double>& length_m, const std::vector<double>& seconds) {
+                const std::size_t n = from.size();
+                if (to.size() != n || length_m.size() != n || seconds.size() != n) {
+                    throw std::invalid_argument("add_edges: all four lists must be equal length");
+                }
+                g.reserve_edges(profile, n);
+                std::size_t skipped = 0;
+                for (std::size_t i = 0; i < n; ++i) {
+                    const auto a = g.index_of(from[i]);
+                    const auto b = g.index_of(to[i]);
+                    // An edge naming a node the graph has never seen is dropped rather
+                    // than faulted: a bounding-box OSM extract clips ways at the border,
+                    // so dangling references are normal, not corruption.
+                    if (a == routing::kNoNode || b == routing::kNoNode) {
+                        ++skipped;
+                        continue;
+                    }
+                    g.add_edge(profile, a, b, length_m[i], seconds[i]);
+                }
+                return skipped;
+            },
+            py::arg("profile"), py::arg("from_ids"), py::arg("to_ids"), py::arg("length_m"),
+            py::arg("seconds"),
+            "Bulk add edges from parallel lists. Returns how many named an unknown node.")
+        .def("index_of", &routing::RoadGraph::index_of, py::arg("external_id"),
+             "Dense index for an OSM id, or 2**32-1 if the graph has never seen it.")
+        .def("external_id", &routing::RoadGraph::external_id, py::arg("node"))
+        .def("position", [](const routing::RoadGraph& g, std::uint32_t node) {
+            const auto& p = g.position(node);
+            return py::make_tuple(p.lat, p.lon);
+        }, py::arg("node"))
+        .def("edge_count", [](const routing::RoadGraph& g, routing::Profile profile) {
+            return g.adjacency(profile).edge_count();
+        }, py::arg("profile"));
+
+    py::class_<routing::RoadRouter>(m, "RoadRouter")
+        // keep_alive ties the graph's lifetime to the router's: the router holds a raw
+        // pointer, so letting Python collect the graph first would dangle it.
+        .def(py::init<const routing::RoadGraph&>(), py::arg("graph"), py::keep_alive<1, 2>())
+        .def("largest_component", &routing::RoadRouter::largest_component, py::arg("profile"))
+        .def("component_size", &routing::RoadRouter::component_size, py::arg("profile"),
+             py::arg("component"))
+        .def(
+            "components",
+            [](routing::RoadRouter& r, routing::Profile profile) {
+                return r.components(profile);
+            },
+            py::arg("profile"),
+            "Component id per dense node index. 2**32-1 means the node has no edges here.")
+        .def(
+            "nearest_node",
+            [](routing::RoadRouter& r, double lat, double lon, routing::Profile profile,
+               std::uint32_t component) { return r.nearest_node(lat, lon, profile, component); },
+            py::arg("lat"), py::arg("lon"), py::arg("profile"),
+            py::arg("component") = routing::kNoComponent,
+            "Nearest routable dense node index, optionally inside one component.")
+        .def(
+            "costs_from",
+            [](routing::RoadRouter& r, double lat, double lon, routing::Profile profile,
+               double max_seconds) {
+                const auto table = r.costs_from(lat, lon, profile, max_seconds);
+                // Only reached nodes cross the boundary. Returning the dense table would
+                // hand Python 188k infinities it has no use for.
+                py::dict out;
+                for (std::uint32_t n = 0; n < table.seconds.size(); ++n) {
+                    if (table.reached(n)) {
+                        out[py::int_(n)] = py::make_tuple(table.seconds[n], table.metres[n]);
+                    }
+                }
+                py::object origin = py::none();
+                if (table.ok()) origin = py::int_(table.origin);
+                return py::make_tuple(out, origin);
+            },
+            py::arg("lat"), py::arg("lon"), py::arg("profile"), py::arg("max_seconds") = 1500.0,
+            "One-to-many sweep. Returns ({node: (seconds, metres)}, origin_node_or_None).")
+        .def(
+            "many_costs",
+            [](routing::RoadRouter& r, double lat, double lon,
+               const std::vector<std::pair<double, double>>& targets, routing::Profile profile,
+               double max_seconds) {
+                std::vector<geo::LatLon> points;
+                points.reserve(targets.size());
+                for (const auto& [tlat, tlon] : targets) points.push_back(geo::LatLon{tlat, tlon});
+                return r.many_costs(lat, lon, points, profile, max_seconds);
+            },
+            py::arg("lat"), py::arg("lon"), py::arg("targets"), py::arg("profile"),
+            py::arg("max_seconds") = 1500.0,
+            "Route to many (lat, lon) targets in a single sweep. One Leg per target, in order.")
+        .def("route", &routing::RoadRouter::route, py::arg("from_lat"), py::arg("from_lon"),
+             py::arg("to_lat"), py::arg("to_lon"), py::arg("profile"),
+             "Point to point with the path. Leg.ok is False when no path exists.");
 }

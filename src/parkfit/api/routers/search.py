@@ -14,6 +14,7 @@ from parkfit.api.schemas import (
     FitDetail,
     GeocodeResponse,
     GeocodeResult,
+    LegalityDetail,
     LegDetail,
     NavigationLinkResponse,
     NavigationResponse,
@@ -166,6 +167,8 @@ async def create_search(
             considered=result.considered,
             merged_duplicates=result.merged_duplicates,
             rejected_illegal=result.rejected_illegal,
+            rejected_setback=result.rejected_setback,
+            legality_unknown=result.legality_unknown,
             rejected_fit=result.rejected_fit,
             rejected_walk=result.rejected_walk,
             radius_m=round(result.radius_m, 1),
@@ -298,9 +301,31 @@ def _to_recommendation(
         bay_width_cm=round(candidate.bay_width_cm, 1),
         orientation=candidate.orientation,
         restriction_warnings=(candidate.restriction.warnings if candidate.restriction else []),
+        legality=_legality(candidate),
         is_exact_space=candidate.is_exact_space,
         navigation=navigation,
         expires_at=expires_at,
+    )
+
+
+def _legality(candidate) -> LegalityDetail | None:
+    """Serialise the legality finding, dropping the sentinel distances.
+
+    The engine uses -1 for "this finding is not distance-based", which is fine inside C++
+    and would be nonsense in an API response. It becomes null here instead, so a client
+    never has to know the sentinel.
+    """
+    verdict = candidate.legal
+    if verdict is None:
+        return None
+    return LegalityDetail(
+        verdict=verdict.verdict,
+        allowed=verdict.allowed,
+        anchor=verdict.anchor,
+        citation=verdict.citation,
+        reason=verdict.reason,
+        distance_m=(round(verdict.distance_cm / 100.0, 2) if verdict.distance_cm >= 0 else None),
+        required_m=(round(verdict.required_cm / 100.0, 2) if verdict.required_cm >= 0 else None),
     )
 
 

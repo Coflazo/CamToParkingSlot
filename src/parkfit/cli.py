@@ -153,6 +153,35 @@ def ingest_roads(
     _print_ingest_table([result])
 
 
+@ingest_app.command("anchors")
+def ingest_anchors(
+    south: float = 52.33,
+    west: float = 4.82,
+    north: float = 52.41,
+    east: float = 4.97,
+    country: str = typer.Option("NL", help="ISO 3166-1 alpha-2 code for the rulebook."),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """Collect the map features road law measures distances from.
+
+    Run ``pf ingest roads`` for the same box first: junctions are derived from the road
+    graph, so without one this collects everything except junctions and says so.
+    """
+    _setup_logging(verbose)
+    from parkfit.ingest.anchors import ingest_anchors as collect
+    from parkfit.ingest.osm import OsmAdapter
+    from parkfit.services.legality import reset_legality_service
+
+    with OsmAdapter() as adapter:
+        result = collect(
+            adapter, south=south, west=west, north=north, east=east, country=country
+        )
+    # The service caches the built index for the process, so a fresh ingest in the same
+    # process would otherwise keep answering from the old anchors.
+    reset_legality_service()
+    _print_ingest_table([result])
+
+
 def _run_rdw(geocoded_only: bool = True):
     from parkfit.ingest.rdw import RdwAdapter
 

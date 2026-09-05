@@ -53,6 +53,7 @@ from parkfit.routing.provider import (
 from parkfit.services.candidate_index import get_candidate_index
 from parkfit.services.geocoding import Destination, HybridGeocoder
 from parkfit.services.ledger import LedgerEntry, get_ledger
+from parkfit.services.legality import LegalVerdict, get_legality_service
 from parkfit.storage.models import (
     EvidenceSource,
     FacilityKind,
@@ -110,6 +111,10 @@ class Candidate:
     walk: RouteResult | None = None
     availability: ResolvedAvailability | None = None
     restriction: RestrictionVerdict | None = None
+    #: Whether road law allows parking here, with the article it turns on. Distinct
+    #: from `restriction`, which is the sign and time regime on the bay itself: this
+    #: is the statutory setback from junctions, crossings, hydrants and the rest.
+    legal: LegalVerdict | None = None
 
     price_eur: float = 0.0
     price_note: str = ""
@@ -138,6 +143,10 @@ class SearchResponse:
     considered: int = 0
     merged_duplicates: int = 0
     rejected_illegal: int = 0
+    #: Refused by a statutory setback rather than by a sign or a time regime.
+    rejected_setback: int = 0
+    #: Kept, but with legality unproven because no anchors cover this area.
+    legality_unknown: int = 0
     rejected_fit: int = 0
     rejected_walk: int = 0
     radius_m: float = 0.0
@@ -378,6 +387,58 @@ class SearchEngine:
             candidate.restriction = verdict
             if verdict is not None and not verdict.allowed:
                 response.rejected_illegal += 1
+                continue
+            kept.append(candidate)
+
+        return self._filter_setbacks(kept, response)
+
+    def _filter_setbacks(
+        self, candidates: list[Candidate], response: SearchResponse
+    ) -> list[Candidate]:
+        """Drop candidates that road law forbids on distance grounds.
+
+        This is a different question from the one above. ``evaluate_restrictions`` reads
+        the sign and time regime recorded against the bay: permit hours, loading windows,
+        disc zones. This reads the statute itself, and the things it measures from are
+        map features rather than anything written on the bay: a hydrant, a crossing, a
+        junction. A bay can be perfectly in order on its own record and still be five
+        metres from something the law says to stay away from.
+
+        A bay whose polygon the municipality surveyed and published is *not* re-judged on
+        setbacks. Amsterdam does not paint a bay inside a bus stop, and second-guessing
+        the surveyor with an OSM-derived anchor would throw away good spaces on the
+        strength of worse data. The setback rules earn their keep on the candidates that
+        are not surveyed bays: camera-derived gaps and OSM-inferred kerb space, which is
+        exactly where nobody has checked.
+        """
+        legality = get_legality_service()
+        subjects = [c for c in candidates if not c.is_exact_space]
+        if not subjects:
+            return candidates
+
+        verdicts = legality.evaluate([(c.lat, c.lon) for c in subjects])
+        kept: list[Candidate] = []
+        refused: dict[tuple[str, int], LegalVerdict] = {}
+
+        for candidate, verdict in zip(subjects, verdicts, strict=True):
+            candidate.legal = verdict
+            if verdict.is_unknown:
+                response.legality_unknown += 1
+            elif not verdict.allowed:
+                refused[candidate.key] = verdict
+
+        for candidate in candidates:
+            verdict = refused.get(candidate.key)
+            if verdict is not None:
+                response.rejected_setback += 1
+                log.debug(
+                    "%s refused: %s (%.1f m, needs %.1f m) %s",
+                    candidate.name,
+                    verdict.anchor,
+                    verdict.distance_cm / 100.0,
+                    verdict.required_cm / 100.0,
+                    verdict.citation,
+                )
                 continue
             kept.append(candidate)
         return kept

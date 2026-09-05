@@ -96,7 +96,26 @@ def build_handoff(
     origin_lat: float | None = None,
     origin_lon: float | None = None,
 ) -> NavigationHandoff:
-    """Build the handoff for one already-resolved point."""
+    """Build the handoff for one already-resolved point.
+
+    On a checkout that has never been compiled there is no C++ URL builder, so the
+    handoff comes back with no links and ``available`` False. That is the honest answer:
+    the point itself is still correct and still shown, and the button is simply absent
+    rather than the whole search failing on an AttributeError.
+    """
+    if native is None:
+        log.warning(
+            "parkfit_native is not built, so navigation links are unavailable; "
+            "build it with: .\\tasks.ps1 build"
+        )
+        return NavigationHandoff(
+            lat=float(lat),
+            lon=float(lon),
+            label=label,
+            is_entrance=is_entrance,
+            point_description=point_description,
+        )
+
     target = native.NavTarget()
     target.lat = float(lat)
     target.lon = float(lon)
