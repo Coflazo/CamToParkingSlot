@@ -104,6 +104,12 @@ class AnchorSet:
     country: str = "NL"
     bbox: tuple[float, float, float, float] | None = None
     generated_at: str = ""
+    #: The anchor kinds this ingest **asked for**, which is not the same as the kinds it
+    #: found. "We looked for hydrants and this district has none" and "nobody ever looked
+    #: for hydrants here" produce identical anchor lists and opposite conclusions, and
+    #: only this field can tell them apart. A rule whose anchor was never queried cannot
+    #: be cleared, so the legality engine downgrades to Unknown rather than to Legal.
+    queried_kinds: tuple[str, ...] = ()
 
     def __len__(self) -> int:
         return len(self.anchors)
@@ -115,17 +121,46 @@ class AnchorSet:
         return dict(sorted(out.items(), key=lambda kv: -kv[1]))
 
 
-def cache_path(settings: Settings | None = None) -> Path:
-    return (settings or get_settings()).data_dir / "osm" / "legal_anchors.json.gz"
+def anchor_dir(settings: Settings | None = None) -> Path:
+    return (settings or get_settings()).data_dir / "osm" / "anchors"
+
+
+def region_key(country: str, bbox: tuple[float, float, float, float]) -> str:
+    """A stable filename for one ingested area.
+
+    Anchors are per-region, not global. One cache file would mean ingesting Istanbul
+    erased Amsterdam, and a product covering four countries cannot hold one city at a
+    time. The key is the country plus the rounded box, so re-ingesting the same area
+    replaces it and a neighbouring area sits beside it.
+    """
+    south, west, north, east = bbox
+    return f"{country.upper()}_{south:.3f}_{west:.3f}_{north:.3f}_{east:.3f}".replace("-", "m")
+
+
+def cache_path(
+    settings: Settings | None = None,
+    *,
+    country: str = "NL",
+    bbox: tuple[float, float, float, float] | None = None,
+) -> Path:
+    """Where one region's anchors live.
+
+    With no bbox this returns the legacy single-file path, which is still read so an
+    existing cache keeps working rather than silently becoming invisible.
+    """
+    if bbox is None:
+        return (settings or get_settings()).data_dir / "osm" / "legal_anchors.json.gz"
+    return anchor_dir(settings) / f"{region_key(country, bbox)}.json.gz"
 
 
 def save(anchor_set: AnchorSet, settings: Settings | None = None) -> Path:
-    path = cache_path(settings)
+    path = cache_path(settings, country=anchor_set.country, bbox=anchor_set.bbox)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "country": anchor_set.country,
         "bbox": list(anchor_set.bbox) if anchor_set.bbox else None,
         "generated_at": anchor_set.generated_at,
+        "queried_kinds": list(anchor_set.queried_kinds),
         # Coordinates are rounded to about a centimetre. Anything finer is noise against
         # a five metre rule, and it halves the file.
         "anchors": [[k, round(lat, 7), round(lon, 7)] for k, lat, lon in anchor_set.anchors],
@@ -135,18 +170,47 @@ def save(anchor_set: AnchorSet, settings: Settings | None = None) -> Path:
     return path
 
 
-def load(settings: Settings | None = None) -> AnchorSet | None:
-    path = cache_path(settings)
-    if not path.exists():
+def _read(path: Path) -> AnchorSet | None:
+    try:
+        with gzip.open(path, "rt", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except Exception as exc:
+        log.warning("unreadable anchor cache %s: %s", path.name, exc)
         return None
-    with gzip.open(path, "rt", encoding="utf-8") as handle:
-        payload = json.load(handle)
     return AnchorSet(
         anchors=[(row[0], float(row[1]), float(row[2])) for row in payload.get("anchors", [])],
         country=payload.get("country", "NL"),
         bbox=tuple(payload["bbox"]) if payload.get("bbox") else None,
         generated_at=payload.get("generated_at", ""),
+        queried_kinds=tuple(payload.get("queried_kinds", ())),
     )
+
+
+def load_all(settings: Settings | None = None) -> list[AnchorSet]:
+    """Every cached region, newest last. Empty when nothing has been ingested."""
+    out: list[AnchorSet] = []
+    legacy = cache_path(settings)
+    if legacy.exists():
+        found = _read(legacy)
+        if found is not None:
+            out.append(found)
+    directory = anchor_dir(settings)
+    if directory.exists():
+        for path in sorted(directory.glob("*.json.gz")):
+            found = _read(path)
+            if found is not None:
+                out.append(found)
+    return out
+
+
+def load(settings: Settings | None = None) -> AnchorSet | None:
+    """The first cached region, for callers that only want one.
+
+    Kept because a single region is the common case in tests and scripts. Anything that
+    has to answer for more than one area uses :func:`load_all`.
+    """
+    found = load_all(settings)
+    return found[0] if found else None
 
 
 def junctions_from_graph(
@@ -291,9 +355,21 @@ def ingest_anchors(
     cycleways = _cycleway_points(adapter, bbox, timeout, result)
     anchors.extend(mark_cycle_path_junctions(junctions, cycleways))
 
+    # What this run *asked for*, so a later reader can tell an absent hydrant from an
+    # un-queried one. Junctions only count as queried when a road graph actually covered
+    # the box; without one the whole kind is missing rather than merely empty.
+    queried = {kind for _selector, kind in POINT_SELECTORS} | {"DRIVEWAY"}
+    if junctions:
+        queried |= {"JUNCTION"}
+    if cycleways:
+        queried |= {"JUNCTION_WITH_CYCLE_PATH"}
+
     anchor_set = AnchorSet(
-        anchors=anchors, country=country, bbox=(south, west, north, east),
+        anchors=anchors,
+        country=country,
+        bbox=(south, west, north, east),
         generated_at=utcnow().isoformat(),
+        queried_kinds=tuple(sorted(queried)),
     )
     path = save(anchor_set, adapter.settings)
     result.created = len(anchors)

@@ -358,6 +358,14 @@ class PointOfInterest(Base, ProvenanceMixin):
 
     lat: Mapped[float] = mapped_column(Float, index=True)
     lon: Mapped[float] = mapped_column(Float, index=True)
+    #: ISO 3166-1 alpha-2 for the area this point was ingested from.
+    #:
+    #: Without it the index leaks across borders in a way that looks like a match. The
+    #: table held only Dutch places, a search for "Tour Eiffel" scored the word "Tour"
+    #: against an Amsterdam boat-tour company, and the product answered a French query
+    #: with a canal in the Netherlands at 0.42 confidence. A wrong answer carrying a
+    #: plausible score is worse than no answer at all.
+    country: Mapped[str] = mapped_column(String(2), default="NL", index=True)
 
     city: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     street: Mapped[str | None] = mapped_column(String(200), nullable=True)

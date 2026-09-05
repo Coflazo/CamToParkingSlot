@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from parkfit.ingest.nominatim import NominatimClient
 from parkfit.ingest.pdok import GeocodeHit, PdokClient
 from parkfit.storage.models import PointOfInterest
 
@@ -203,10 +204,17 @@ class HybridGeocoder:
     #: Below this a point-of-interest match is not offered at all.
     MIN_POI_SCORE = 0.42
 
-    def __init__(self, session: Session, pdok: PdokClient | None = None):
+    def __init__(
+        self,
+        session: Session,
+        pdok: PdokClient | None = None,
+        nominatim: NominatimClient | None = None,
+    ):
         self.session = session
         self._pdok = pdok
         self._owns_pdok = pdok is None
+        self._nominatim = nominatim
+        self._owns_nominatim = nominatim is None
 
     @property
     def pdok(self) -> PdokClient:
@@ -214,46 +222,91 @@ class HybridGeocoder:
             self._pdok = PdokClient()
         return self._pdok
 
+    @property
+    def nominatim(self) -> NominatimClient:
+        if self._nominatim is None:
+            self._nominatim = NominatimClient()
+        return self._nominatim
+
     def close(self) -> None:
         if self._owns_pdok and self._pdok is not None:
             self._pdok.close()
             self._pdok = None
+        if self._owns_nominatim and self._nominatim is not None:
+            self._nominatim.close()
+            self._nominatim = None
 
     # public API ---------------------------------------------------------
-    def geocode(self, query: str, *, city: str | None = None, limit: int = 5) -> list[Destination]:
-        """Resolve a destination, best match first."""
+    def geocode(
+        self,
+        query: str,
+        *,
+        city: str | None = None,
+        limit: int = 5,
+        country: str | None = None,
+    ) -> list[Destination]:
+        """Resolve a destination, best match first.
+
+        ``country`` is an ISO 3166-1 alpha-2 code. It decides which national geocoder is
+        worth asking: PDOK is the BAG address register and knows nothing outside the
+        Netherlands, so asking it for an Istanbul street is a wasted round trip that can
+        only return a Dutch street with a similar name. Left as None the chain tries
+        everything, which is the right behaviour when the country is genuinely unknown.
+        """
         query = (query or "").strip()
         if not query:
             return []
+        code = (country or "").upper() or None
 
-        results = self._search_pois(query, city=city, limit=limit)
+        results = self._search_pois(query, city=city, limit=limit, country=code)
         if results and results[0].confidence >= self.STRONG_POI_SCORE:
-            # A confident local hit. Asking PDOK as well would only add addresses that
+            # A confident local hit. Asking anything else would only add addresses that
             # happen to share a word with the museum the user meant.
             return results[:limit]
 
-        try:
-            for hit in self.pdok.search(query if city is None else f"{query} {city}", rows=limit):
-                results.append(self._from_pdok(hit, query))
-        except Exception as exc:
-            log.warning("PDOK search failed for %r: %s", query, exc)
-
-        if not results:
+        if code in (None, "NL"):
             try:
-                for hit in self.pdok.suggest(query, rows=limit):
+                for hit in self.pdok.search(
+                    query if city is None else f"{query} {city}", rows=limit
+                ):
                     results.append(self._from_pdok(hit, query))
             except Exception as exc:
-                log.warning("PDOK suggest failed for %r: %s", query, exc)
+                log.warning("PDOK search failed for %r: %s", query, exc)
+
+            if not results:
+                try:
+                    for hit in self.pdok.suggest(query, rows=limit):
+                        results.append(self._from_pdok(hit, query))
+                except Exception as exc:
+                    log.warning("PDOK suggest failed for %r: %s", query, exc)
+
+        # Global fallback. Reached whenever the national geocoders found nothing, which
+        # is every non-Dutch destination and also the Dutch ones PDOK cannot resolve.
+        # Rate-limited to one request per second by its client, so it stays last.
+        if not results:
+            try:
+                for hit in self.nominatim.search(
+                    query if city is None else f"{query}, {city}",
+                    country_codes=code.lower() if code else None,
+                    rows=limit,
+                ):
+                    results.append(self._from_pdok(hit, query))
+            except Exception as exc:
+                log.warning("Nominatim search failed for %r: %s", query, exc)
 
         results.sort(key=lambda d: d.confidence, reverse=True)
         return self._dedupe(results)[:limit]
 
-    def geocode_one(self, query: str, *, city: str | None = None) -> Destination | None:
-        hits = self.geocode(query, city=city, limit=1)
+    def geocode_one(
+        self, query: str, *, city: str | None = None, country: str | None = None
+    ) -> Destination | None:
+        hits = self.geocode(query, city=city, limit=1, country=country)
         return hits[0] if hits else None
 
     # point of interest search ------------------------------------------
-    def _search_pois(self, query: str, *, city: str | None, limit: int) -> list[Destination]:
+    def _search_pois(
+        self, query: str, *, city: str | None, limit: int, country: str | None = None
+    ) -> list[Destination]:
         tokens = content_tokens(query)
         if not tokens:
             return []
@@ -266,6 +319,13 @@ class HybridGeocoder:
             clauses = [PointOfInterest.normalised_name.contains(normalise(query))]
 
         stmt = select(PointOfInterest).where(or_(*clauses))
+        if country:
+            # Without this the index leaks across borders. It holds Dutch places, and a
+            # search for "Tour Eiffel" scored the word "Tour" against an Amsterdam
+            # boat-tour company, answering a French query with a canal in the Netherlands
+            # at 0.42 confidence. A plausible score on a wrong answer is the worst
+            # possible failure for a geocoder, because nothing downstream can detect it.
+            stmt = stmt.where(func.upper(PointOfInterest.country) == country.upper())
         if city:
             stmt = stmt.where(func.lower(PointOfInterest.city) == city.lower())
         candidates = self.session.execute(stmt.limit(400)).scalars().all()

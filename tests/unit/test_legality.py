@@ -265,3 +265,97 @@ def test_anchors_with_no_recorded_extent_claim_nothing_beyond_the_index(tmp_path
     # the behaviour falls back to what it was before coverage existed.
     assert service.covers(HYDRANT_LAT, HYDRANT_LON)
     assert service.coverage_bbox is None
+
+
+# ------------------------------------------------ partial anchor coverage
+
+def test_a_rule_whose_anchor_was_never_collected_is_reported_not_hidden(tmp_path):
+    """A covered region can still be missing a whole anchor kind.
+
+    Istanbul is the real case. Nothing sources bridges or underpasses yet, and KTK 2918
+    article 61(k) has a ten-metre rule for both, so a Turkish space beside a bridge comes
+    back clean because that rule never ran rather than because it passed. Saying "legal"
+    with no qualification there would claim a check that did not happen.
+    """
+    settings = Settings(data_dir=tmp_path)
+    anchor_ingest.save(
+        anchor_ingest.AnchorSet(
+            anchors=[("FIRE_HYDRANT", HYDRANT_LAT, HYDRANT_LON)],
+            country="TR",
+            bbox=(52.30, 4.80, 52.45, 5.00),
+            queried_kinds=("FIRE_HYDRANT", "PEDESTRIAN_CROSSING"),
+        ),
+        settings,
+    )
+    service = LegalityService(settings)
+
+    gaps = service.unchecked_anchors(CLEAR_LAT, CLEAR_LON, country="TR")
+    assert "BRIDGE" in gaps
+    assert "JUNCTION" in gaps
+    assert "FIRE_HYDRANT" not in gaps  # it was queried, so its absence is real
+
+    clean = service.evaluate_one(CLEAR_LAT, CLEAR_LON, country="TR")
+    assert clean.verdict == "legal"
+    assert not clean.fully_checked
+    assert "BRIDGE" in clean.unchecked_anchors
+
+
+def test_a_refusal_does_not_carry_the_gap_list(tmp_path):
+    """A rule that fired is sound whatever else was missing, so the caveat is noise."""
+    settings = Settings(data_dir=tmp_path)
+    anchor_ingest.save(
+        anchor_ingest.AnchorSet(
+            anchors=[("FIRE_HYDRANT", HYDRANT_LAT, HYDRANT_LON)],
+            country="TR",
+            bbox=(52.30, 4.80, 52.45, 5.00),
+            queried_kinds=("FIRE_HYDRANT",),
+        ),
+        settings,
+    )
+    service = LegalityService(settings)
+    refused = service.evaluate_one(HYDRANT_LAT, HYDRANT_LON, country="TR")
+    assert refused.verdict == "prohibited"
+    assert refused.unchecked_anchors == ()
+    assert refused.fully_checked
+
+
+def test_an_absent_anchor_that_was_looked_for_is_not_a_gap(service):
+    """The distinction the whole mechanism turns on.
+
+    The fixture queried nothing explicitly, so everything the book needs is a gap. A real
+    ingest records what it asked for, and a kind it asked for and did not find is a fact
+    about the world rather than a hole in the data.
+    """
+    queried = anchor_ingest.AnchorSet(
+        anchors=[], country="NL", bbox=(52.30, 4.80, 52.45, 5.00),
+        queried_kinds=("FIRE_HYDRANT",),
+    )
+    assert "FIRE_HYDRANT" in queried.queried_kinds
+
+
+def test_two_regions_load_together_and_each_keeps_its_own_coverage(tmp_path):
+    """Ingesting Istanbul must not erase Amsterdam."""
+    settings = Settings(data_dir=tmp_path)
+    for country, bbox, lat, lon in (
+        ("NL", (52.30, 4.80, 52.45, 5.00), 52.37, 4.90),
+        ("TR", (41.00, 28.90, 41.10, 29.10), 41.05, 29.00),
+    ):
+        anchor_ingest.save(
+            anchor_ingest.AnchorSet(
+                anchors=[("FIRE_HYDRANT", lat, lon)],
+                country=country,
+                bbox=bbox,
+                queried_kinds=("FIRE_HYDRANT",),
+            ),
+            settings,
+        )
+
+    service = LegalityService(settings)
+    assert len(service.regions) == 2
+    assert {c for c, _ in service.regions} == {"NL", "TR"}
+    # Both cities are covered, and a third is not.
+    assert service.covers(52.37, 4.90, country="NL")
+    assert service.covers(41.05, 29.00, country="TR")
+    assert not service.covers(48.8566, 2.3522, country="FR")
+    # And the Istanbul hydrant is found under Turkish law.
+    assert service.evaluate_one(41.05, 29.00, country="TR").verdict == "prohibited"

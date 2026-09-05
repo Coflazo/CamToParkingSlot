@@ -300,11 +300,17 @@ def ingest_pois(
     west: float = 4.72,
     north: float = 52.43,
     east: float = 5.02,
+    country: str = "NL",
 ) -> IngestResult:
     """Index named places so users can type a destination instead of an address.
 
     See :mod:`parkfit.services.geocoding` for why this exists: the official Dutch
     geocoder returns zero results for "Rembrandthuis".
+
+    ``country`` is recorded on every row rather than derived later from the coordinates.
+    The geocoder filters on it, and it has to: with the table holding only Dutch places,
+    a search for "Tour Eiffel" matched the word "Tour" against an Amsterdam boat-tour
+    company and answered a French query with a canal in the Netherlands.
     """
     from parkfit.services.geocoding import CATEGORY_IMPORTANCE, normalise
     from parkfit.storage.models import PointOfInterest
@@ -338,6 +344,10 @@ def ingest_pois(
             row.house_number = poi.tags.get("addr:housenumber")
             row.postcode = poi.tags.get("addr:postcode")
             row.importance = CATEGORY_IMPORTANCE.get(poi.category, 0.4)
+            # Recorded, not inferred. The geocoder filters on it, and a point with
+            # the wrong country is worse than a missing one: it answers a query it
+            # should never have seen.
+            row.country = country.upper()
 
             aliases = [
                 poi.tags.get(key)

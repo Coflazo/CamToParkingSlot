@@ -471,6 +471,21 @@ PYBIND11_MODULE(parkfit_native, m) {
             return legal::max_distance_cm(b);
         })
         .def_property_readonly(
+            "anchor_names",
+            [](const legal::Rulebook& b) {
+                // Every map feature this book depends on. A caller uses it to check that
+                // an area's ingest actually looked for all of them: a rule whose anchor
+                // was never collected cannot clear a space, only fail to condemn it.
+                std::vector<std::string> out;
+                for (const auto& rule : b.rules) {
+                    std::string name(legal::to_string(rule.anchor));
+                    if (std::find(out.begin(), out.end(), name) == out.end()) {
+                        out.push_back(name);
+                    }
+                }
+                return out;
+            })
+        .def_property_readonly(
             "citations",
             [](const legal::Rulebook& b) {
                 // Every distinct article the book rests on, for the attribution line.
