@@ -181,6 +181,19 @@ def ingest_ispark(
     _print_ingest_table(results)
 
 
+@ingest_app.command("france")
+def ingest_france(verbose: bool = typer.Option(False, "--verbose", "-v")) -> None:
+    """French national off-street parking base: capacity, height limits, tariffs."""
+    _setup_logging(verbose)
+    from parkfit.ingest.france import FranceAdapter
+    from parkfit.storage.session import create_all
+
+    create_all()
+    with FranceAdapter() as adapter:
+        result = adapter.run()
+    _print_ingest_table([result])
+
+
 @ingest_app.command("autobahn")
 def ingest_autobahn(
     roads: str = typer.Option("", help="Comma-separated road list, e.g. A1,A8. Empty means all."),
