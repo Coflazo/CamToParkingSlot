@@ -477,22 +477,41 @@ class SearchEngine:
         margins = native.Margins()
         margins.tight_threshold_cm = 15.0
 
+        # Batched, in two groups. One call each instead of one per candidate: the check
+        # itself is a handful of comparisons, so crossing the language boundary for it
+        # several hundred times a search costs more than the arithmetic does.
+        facilities = [c for c in candidates if c.key[0] == "facility"]
+        bays = [c for c in candidates if c.key[0] != "facility"]
+
+        results: dict[tuple[str, int], object] = {}
+        if facilities:
+            # A missing height is passed as 0, which the native side reads as
+            # "unpublished" and answers UNVERIFIED, never as unlimited.
+            heights = [c.max_height_cm or 0.0 for c in facilities]
+            for candidate, result in zip(
+                facilities, native.check_facilities(vehicle, heights, margins), strict=True
+            ):
+                results[candidate.key] = result
+        if bays:
+            for candidate, result in zip(
+                bays,
+                native.check_bays(
+                    vehicle,
+                    [c.bay_length_cm for c in bays],
+                    [c.bay_width_cm for c in bays],
+                    # The normalised value goes straight across. It used to be translated
+                    # back into Dutch to satisfy a Dutch-only parser, which meant a
+                    # Turkish bay had to pretend to be Dutch to be measured.
+                    [c.orientation for c in bays],
+                    margins,
+                ),
+                strict=True,
+            ):
+                results[candidate.key] = result
+
         kept: list[Candidate] = []
         for candidate in candidates:
-            if candidate.key[0] == "facility":
-                limits = native.FacilityLimits()
-                if candidate.max_height_cm:
-                    limits.max_height_cm = candidate.max_height_cm
-                result = native.check_facility(vehicle, limits, margins)
-            else:
-                result = native.check_bay(
-                    vehicle,
-                    candidate.bay_length_cm,
-                    candidate.bay_width_cm,
-                    native.orientation_from_dutch(_dutch_orientation(candidate.orientation)),
-                    margins,
-                )
-
+            result = results[candidate.key]
             candidate.fit_verdict = result.verdict_name
             candidate.fit_slack_cm = result.min_slack_cm
             candidate.fit_unverified = list(result.unverified_dimensions)
