@@ -185,3 +185,86 @@ def test_the_provider_string_says_which_engine_answered(routers):
     assert native_router.route(52.3000, 4.8000, 52.3108, 4.8112, Profile.CAR).provider == (
         "native-graph"
     )
+
+
+# ------------------------------------------------------- batched fit checks
+
+def _vehicle():
+    v = native.Vehicle()
+    v.length_cm = 445.0
+    v.body_width_cm = 180.0
+    v.width_with_mirrors_cm = 201.0
+    v.height_cm = 149.0
+    v.weight_kg = 1300.0
+    return v
+
+
+@pytest.mark.parametrize(
+    ("length_cm", "width_cm", "orientation"),
+    [
+        (600.0, 220.0, "parallel"),
+        (480.0, 200.0, "parallel"),
+        (500.0, 250.0, "perpendicular"),
+        (430.0, 175.0, "perpendicular"),   # too small for this car
+        (520.0, 230.0, "angled"),
+        (600.0, 220.0, "unknown"),
+    ],
+)
+def test_batched_bay_checks_match_one_at_a_time(length_cm, width_cm, orientation):
+    """The batched entry point must be a pure speed-up, never a different answer."""
+    vehicle = _vehicle()
+    margins = native.Margins()
+    margins.tight_threshold_cm = 15.0
+
+    single = native.check_bay(
+        vehicle, length_cm, width_cm, native.orientation_from_string(orientation), margins
+    )
+    batched = native.check_bays(vehicle, [length_cm], [width_cm], [orientation], margins)[0]
+
+    assert single.verdict == batched.verdict
+    assert single.min_slack_cm == pytest.approx(batched.min_slack_cm, abs=1e-9)
+    assert list(single.unverified_dimensions) == list(batched.unverified_dimensions)
+
+
+def test_batched_facility_checks_match_one_at_a_time():
+    vehicle = _vehicle()
+    margins = native.Margins()
+    heights = [0.0, 190.0, 200.0, 260.0]
+
+    batched = native.check_facilities(vehicle, heights, margins)
+    assert len(batched) == len(heights)
+
+    for height, result in zip(heights, batched, strict=True):
+        limits = native.FacilityLimits()
+        if height > 0.0:
+            limits.max_height_cm = height
+        single = native.check_facility(vehicle, limits, margins)
+        assert single.verdict == result.verdict
+        assert single.min_slack_cm == pytest.approx(result.min_slack_cm, abs=1e-9)
+
+
+def test_an_unpublished_height_is_unverified_not_unlimited():
+    """Zero means the operator published nothing. Reading it as unlimited routes a van
+    into a barrier, which is the single most expensive mistake this engine can make."""
+    verdict = native.check_facilities(_vehicle(), [0.0], native.Margins())[0]
+    assert verdict.verdict != native.Verdict.FITS or verdict.unverified_dimensions
+
+
+def test_batched_calls_reject_mismatched_list_lengths():
+    """Silently zipping to the shortest list would drop candidates without a trace."""
+    with pytest.raises(ValueError):
+        native.check_bays(_vehicle(), [600.0, 500.0], [220.0], ["parallel", "parallel"])
+
+
+def test_orientation_no_longer_requires_a_dutch_round_trip():
+    """The search used to translate "parallel" back into "Langs" to satisfy the parser.
+
+    Both spellings still work, because an adapter reading raw Amsterdam data legitimately
+    has the Dutch one, but nothing downstream has to know Dutch any more.
+    """
+    assert native.orientation_from_string("parallel") == native.BayOrientation.PARALLEL
+    assert native.orientation_from_string("Langs") == native.BayOrientation.PARALLEL
+    assert native.orientation_from_string("perpendicular") == native.BayOrientation.PERPENDICULAR
+    assert native.orientation_from_string("Haaks") == native.BayOrientation.PERPENDICULAR
+    assert native.orientation_from_string("angled") == native.BayOrientation.ANGLED
+    assert native.orientation_from_string("nonsense") == native.BayOrientation.UNKNOWN

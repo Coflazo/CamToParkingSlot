@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -36,6 +37,7 @@
 #include "parkfit/nav/deeplink.hpp"
 #include "parkfit/rank/score.hpp"
 #include "parkfit/routing/graph.hpp"
+#include "parkfit/vision/uncalibrated_gap.hpp"
 
 namespace py = pybind11;
 using namespace parkfit;
@@ -200,6 +202,10 @@ PYBIND11_MODULE(parkfit_native, m) {
 
     m.def("orientation_from_dutch", &fit::orientation_from_dutch, py::arg("value"),
           "Map the Amsterdam parkeervakken type field (Langs/Haaks/Visgraat).");
+    m.def("orientation_from_string", &fit::orientation_from_string, py::arg("value"),
+          "Map the normalised orientation (parallel/perpendicular/angled). Prefer this: "
+          "it does not require a non-Dutch bay to pretend to be Dutch.");
+
 
     py::class_<fit::DimensionProvenance>(m, "DimensionProvenance")
         .def(py::init<>())
@@ -283,6 +289,54 @@ PYBIND11_MODULE(parkfit_native, m) {
     m.def("required_gap_length_cm", &fit::required_gap_length_cm, py::arg("vehicle"),
           py::arg("margins") = fit::Margins{});
 
+    // Batched fit checks.
+    //
+    // A search scores a few hundred candidates and each one needs a verdict. Done one at
+    // a time that is a few hundred crossings of the language boundary for arithmetic
+    // that takes nanoseconds, so the crossing dominates the work. These take flat lists
+    // and cross once, matching the SpatialGrid.insert_many idiom above.
+
+    m.def(
+        "check_bays",
+        [](const fit::Vehicle& vehicle, const std::vector<double>& length_cm,
+           const std::vector<double>& width_cm,
+           const std::vector<std::string>& orientation, const fit::Margins& margins) {
+            const std::size_t n = length_cm.size();
+            if (width_cm.size() != n || orientation.size() != n) {
+                throw std::invalid_argument("check_bays: all three lists must be equal length");
+            }
+            std::vector<fit::FitResult> out;
+            out.reserve(n);
+            for (std::size_t i = 0; i < n; ++i) {
+                out.push_back(fit::check_bay(vehicle, length_cm[i], width_cm[i],
+                                             fit::orientation_from_string(orientation[i]),
+                                             margins));
+            }
+            return out;
+        },
+        py::arg("vehicle"), py::arg("length_cm"), py::arg("width_cm"), py::arg("orientation"),
+        py::arg("margins") = fit::Margins(),
+        "Fit verdicts for many bays in one call, in order.");
+
+    m.def(
+        "check_facilities",
+        [](const fit::Vehicle& vehicle, const std::vector<double>& max_height_cm,
+           const fit::Margins& margins) {
+            std::vector<fit::FitResult> out;
+            out.reserve(max_height_cm.size());
+            for (const double height : max_height_cm) {
+                fit::FacilityLimits limits;
+                // A non-positive height means the operator published none, which is
+                // deliberately distinct from unlimited: the default limit is left in
+                // place so the verdict comes back UNVERIFIED rather than FITS.
+                if (height > 0.0) limits.max_height_cm = height;
+                out.push_back(fit::check_facility(vehicle, limits, margins));
+            }
+            return out;
+        },
+        py::arg("vehicle"), py::arg("max_height_cm"), py::arg("margins") = fit::Margins(),
+        "Fit verdicts for many facilities in one call, in order. A height of 0 or less "
+        "means unpublished, not unlimited.");
     // ---------------------------------------------------------------- rank
     py::enum_<rank::EvidenceSource>(m, "EvidenceSource")
         .value("OSM_ONLY", rank::EvidenceSource::OsmOnly)
@@ -612,6 +666,93 @@ PYBIND11_MODULE(parkfit_native, m) {
         py::arg("shared") = legal::Context{},
         "Judge many (lat, lon) points in one call. 400 candidates against 20k anchors "
         "costs about 7 ms.");
+
+    // -------------------------------------------------------------- vision
+    //
+    // The uncalibrated kerb-gap finder. It runs on a two-second loop per watched camera
+    // rather than once per search, and its occlusion guard is quadratic in the detection
+    // count, which is why it is here rather than in the interpreter.
+    //
+    // Only the uncalibrated path is exposed. The calibrated CurbGapEstimator in gap.hpp
+    // needs a validated homography and a surveyed kerb centreline, and it is driven by
+    // the C++ vision worker, which has both. Handing Python a half-configured version of
+    // it would invite a caller to feed it a made-up scale and get metres back that look
+    // like measurements.
+
+    py::class_<vision::UncalibratedGapConfig>(m, "GapConfig")
+        .def(py::init<>())
+        .def_readwrite("typical_car_width_m", &vision::UncalibratedGapConfig::typical_car_width_m)
+        .def_readwrite("min_gap_m", &vision::UncalibratedGapConfig::min_gap_m)
+        .def_readwrite("max_gap_m", &vision::UncalibratedGapConfig::max_gap_m)
+        .def_readwrite("min_depth_m", &vision::UncalibratedGapConfig::min_depth_m)
+        .def_readwrite("min_cars_for_confident_scale",
+                       &vision::UncalibratedGapConfig::min_cars_for_confident_scale)
+        .def_readwrite("min_car_width_px", &vision::UncalibratedGapConfig::min_car_width_px)
+        .def_readwrite("min_band_tolerance_px",
+                       &vision::UncalibratedGapConfig::min_band_tolerance_px)
+        .def_readwrite("frame_edge_margin_px",
+                       &vision::UncalibratedGapConfig::frame_edge_margin_px);
+
+    py::class_<vision::ImageGap>(m, "ImageGap")
+        .def_readonly("x1", &vision::ImageGap::x1)
+        .def_readonly("y1", &vision::ImageGap::y1)
+        .def_readonly("x2", &vision::ImageGap::x2)
+        .def_readonly("y2", &vision::ImageGap::y2)
+        .def_readonly("length_m", &vision::ImageGap::length_m)
+        .def_readonly("depth_m", &vision::ImageGap::depth_m)
+        .def("__repr__", [](const vision::ImageGap& g) {
+            return "ImageGap(length_m=" + std::to_string(g.length_m) +
+                   ", depth_m=" + std::to_string(g.depth_m) + ")";
+        });
+
+    py::class_<vision::Scale>(m, "GapScale")
+        .def_readonly("pixels_per_metre", &vision::Scale::pixels_per_metre)
+        .def_readonly("confident", &vision::Scale::confident)
+        .def("usable", &vision::Scale::usable);
+
+    // Boxes cross as flat tuples rather than as objects. A frame is tens of detections
+    // and this runs every two seconds per camera, so building a bound object per box
+    // would cost more than the whole calculation.
+    using BoxTuple = std::tuple<double, double, double, double, bool, bool>;
+    const auto to_boxes = [](const std::vector<BoxTuple>& rows) {
+        std::vector<vision::ImageBox> boxes;
+        boxes.reserve(rows.size());
+        for (const auto& [x1, y1, x2, y2, flanking, is_car] : rows) {
+            boxes.push_back(vision::ImageBox{x1, y1, x2, y2, flanking, is_car});
+        }
+        return boxes;
+    };
+
+    m.def(
+        "estimate_gap_scale",
+        [to_boxes](const std::vector<BoxTuple>& rows, const vision::UncalibratedGapConfig& config) {
+            return vision::estimate_scale(to_boxes(rows), config);
+        },
+        py::arg("boxes"), py::arg("config") = vision::UncalibratedGapConfig(),
+        "Pixels per metre from the median detected car width. Boxes are "
+        "(x1, y1, x2, y2, flanking, is_car) tuples.");
+
+    m.def(
+        "kerb_band",
+        [to_boxes](const std::vector<BoxTuple>& rows, const vision::UncalibratedGapConfig& config) {
+            const auto band = vision::kerb_band(to_boxes(rows), config);
+            if (!band.valid) return py::object(py::none());
+            return py::object(py::make_tuple(band.low, band.high));
+        },
+        py::arg("boxes"), py::arg("config") = vision::UncalibratedGapConfig(),
+        "The vertical band the parked cars occupy, or None when there are too few.");
+
+    m.def(
+        "find_free_spaces",
+        [to_boxes](const std::vector<BoxTuple>& rows, double pixels_per_metre,
+                   double frame_width, const vision::UncalibratedGapConfig& config) {
+            return vision::find_free_spaces(to_boxes(rows), pixels_per_metre, frame_width,
+                                            config);
+        },
+        py::arg("boxes"), py::arg("pixels_per_metre"), py::arg("frame_width"),
+        py::arg("config") = vision::UncalibratedGapConfig(),
+        "Kerb gaps between consecutive parked vehicles. Lengths are estimates from the "
+        "detected-car scale, never measurements.");
 
     // ------------------------------------------------------------- routing
     //

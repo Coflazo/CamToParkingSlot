@@ -38,6 +38,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from parkfit.native import native
+
 log = logging.getLogger(__name__)
 
 #: Median bodywork width of the RDW test fleet, in metres. The scale anchor.
@@ -193,6 +195,47 @@ def kerb_band(vehicles: list[DetectedVehicle]) -> tuple[float, float] | None:
 
 
 def find_free_spaces(
+    vehicles: list[DetectedVehicle], pixels_per_metre: float, frame_width: int
+) -> list[FreeSpace]:
+    """Kerb gaps, in C++ where it is built and in Python where it is not.
+
+    The geometry moved to ``cpp/vision/include/parkfit/vision/uncalibrated_gap.hpp``
+    because it runs on a two-second loop per watched camera and its occlusion guard is
+    quadratic in the detection count. The Python below is the parity reference and the
+    answer on an uncompiled checkout; ``tests/contract/test_vision_parity.py`` holds the
+    two to the same output.
+    """
+    if native is not None:
+        boxes = [
+            (v.x1, v.y1, v.x2, v.y2, v.label in FLANKING_CLASSES, v.label == "car")
+            for v in vehicles
+        ]
+        config = native.GapConfig()
+        config.typical_car_width_m = TYPICAL_CAR_WIDTH_M
+        config.min_gap_m = MIN_USEFUL_GAP_M
+        config.max_gap_m = MAX_CREDIBLE_GAP_M
+        config.min_depth_m = MIN_CREDIBLE_DEPTH_M
+        config.min_cars_for_confident_scale = MIN_CARS_FOR_CONFIDENT_SCALE
+
+        fleet = _fleet_lengths()
+        return [
+            FreeSpace(
+                x1=g.x1,
+                y1=g.y1,
+                x2=g.x2,
+                y2=g.y2,
+                length_m=round(g.length_m, 1),
+                depth_m=round(g.depth_m, 1),
+                # 60 cm on top of the car's own length, which is roughly what it takes to
+                # get into a parallel space without a dozen shuffles.
+                fits=[name for name, length in fleet if length + 0.6 <= g.length_m],
+            )
+            for g in native.find_free_spaces(boxes, pixels_per_metre, float(frame_width), config)
+        ]
+    return _find_free_spaces_python(vehicles, pixels_per_metre, frame_width)
+
+
+def _find_free_spaces_python(
     vehicles: list[DetectedVehicle], pixels_per_metre: float, frame_width: int
 ) -> list[FreeSpace]:
     """Gaps between consecutive vehicles along the kerb, left to right.

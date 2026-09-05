@@ -46,6 +46,22 @@ inline BayOrientation orientation_from_dutch(const std::string& s) {
     return BayOrientation::Unknown;
 }
 
+/// Orientation from the storage layer's own vocabulary.
+///
+/// This is what callers should use. `orientation_from_dutch` reads the raw Amsterdam
+/// `parkeervakken` type field and belongs to that adapter; everything downstream has
+/// already normalised to parallel/perpendicular/angled. The search was translating its
+/// normalised value *back* into Dutch purely to satisfy the Dutch parser, which meant a
+/// German or Turkish bay had to pretend to be Dutch to be measured.
+inline BayOrientation orientation_from_string(const std::string& s) {
+    if (s == "parallel") return BayOrientation::Parallel;
+    if (s == "perpendicular") return BayOrientation::Perpendicular;
+    if (s == "angled") return BayOrientation::Angled;
+    // Falling back to the Dutch reader keeps a caller that still passes "Langs" working
+    // rather than silently returning Unknown and widening every bay check.
+    return orientation_from_dutch(s);
+}
+
 /// Clearance policy. Defaults are deliberately conservative; every value can be raised
 /// by the user but none can be lowered past its floor.
 struct Margins {
