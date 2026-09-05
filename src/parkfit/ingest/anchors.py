@@ -432,12 +432,25 @@ def _junctions_for(
     """Junctions from the cached road graph, falling back to fetching one."""
     from parkfit.routing.graph import Graph, NativeGraphProvider
 
+    south, west, north, east = bbox
+    centre_lat, centre_lon = (south + north) / 2.0, (west + east) / 2.0
+
     provider = NativeGraphProvider(adapter.settings)
-    if not provider.cache_path.exists():
-        log.info("no cached road graph, so junction anchors are skipped; run: pf ingest roads")
+    covering = [r for r in provider.regions() if r.contains(centre_lat, centre_lon)]
+    if not covering:
+        # Junctions are the one anchor kind that comes from the road graph rather than
+        # from Overpass, so without a graph for this area the whole kind is absent. That
+        # is recorded in queried_kinds, which is what stops a later evaluation reporting
+        # a space near an uncollected junction as legal.
+        log.info(
+            "no cached road graph covers (%.4f, %.4f), so junction anchors are skipped; "
+            "run: pf ingest roads for this area",
+            centre_lat,
+            centre_lon,
+        )
         return []
 
-    with gzip.open(provider.cache_path, "rt", encoding="utf-8") as handle:
+    with gzip.open(covering[0].path, "rt", encoding="utf-8") as handle:
         payload = json.load(handle)
     graph = Graph(
         nodes={int(k): (v[0], v[1]) for k, v in payload["nodes"].items()},

@@ -141,15 +141,22 @@ def ingest_roads(
     west: float = 4.82,
     north: float = 52.41,
     east: float = 4.97,
+    country: str = typer.Option("NL", help="ISO 3166-1 alpha-2 code for this region."),
     verbose: bool = typer.Option(False, "--verbose", "-v"),
 ) -> None:
-    """Build and cache the routable road graph for a bounding box."""
+    """Build and cache the routable road graph for a bounding box.
+
+    Graphs are kept per region, so ingesting a second city adds to the set rather than
+    replacing the first.
+    """
     _setup_logging(verbose)
     from parkfit.ingest.osm import OsmAdapter
     from parkfit.ingest.osm import ingest_roads as build
 
     with OsmAdapter() as adapter:
-        result = build(adapter, south=south, west=west, north=north, east=east)
+        result = build(
+            adapter, south=south, west=west, north=north, east=east, country=country
+        )
     _print_ingest_table([result])
 
 
