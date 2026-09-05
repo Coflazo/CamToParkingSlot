@@ -20,6 +20,7 @@ is worse than one that says nothing, because the guess is indistinguishable from
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -70,6 +71,12 @@ UNKNOWN = LegalVerdict(
     verdict="unknown",
     allowed=False,
     reason="no restriction data loaded for this area, so legality is unknown",
+)
+
+OUTSIDE_COVERAGE = LegalVerdict(
+    verdict="unknown",
+    allowed=False,
+    reason="this location is outside the area the loaded restriction data covers",
 )
 
 _NOT_BUILT = LegalVerdict(
@@ -138,6 +145,45 @@ class LegalityService:
         log.info("legal anchors loaded: %d (%s)", len(index), anchor_set.counts())
 
     # ------------------------------------------------------------ querying
+    def covers(self, lat: float, lon: float, *, country: str | None = None) -> bool:
+        """Whether the loaded anchors can actually say anything about this point.
+
+        This exists because of a bug that was invisible from the output. The index held
+        4,477 Amsterdam anchors; an Istanbul point swept it, found nothing within a
+        hundred metres because everything in it was two thousand kilometres away, broke
+        no rules, and came back **legal**. A non-empty index is not the same thing as
+        coverage, and "no anchors near this point" and "no anchors near this point
+        because none were ever collected here" are opposite answers.
+
+        The usable area is the ingested bounding box **eroded by the book's own reach**.
+        A point three metres inside the edge of the box could have a hydrant four metres
+        away on the other side of it, never ingested and therefore never seen, so the
+        band around the edge is honestly outside coverage even though anchors exist there.
+        """
+        self._ensure_loaded()
+        if self._anchor_set is None or self._anchor_set.bbox is None:
+            # Anchors with no recorded extent. Their coverage cannot be established, so
+            # nothing is claimed for them beyond what the index itself contains.
+            return self._index is not None and len(self._index) > 0
+
+        south, west, north, east = self._anchor_set.bbox
+        book = self.rulebook(country)
+        reach_m = (book.max_distance_cm / 100.0) if book is not None else 0.0
+        # Degrees per metre. Longitude is scaled by latitude, and the cosine is floored
+        # so a pole never produces an infinite margin.
+        lat_margin = reach_m / 111_320.0
+        lon_margin = lat_margin / max(0.05, math.cos(math.radians((south + north) / 2.0)))
+
+        return (
+            south + lat_margin <= lat <= north - lat_margin
+            and west + lon_margin <= lon <= east - lon_margin
+        )
+
+    @property
+    def coverage_bbox(self) -> tuple[float, float, float, float] | None:
+        self._ensure_loaded()
+        return self._anchor_set.bbox if self._anchor_set else None
+
     def rulebook(self, country: str | None = None):
         """The book for a country. Unknown codes get an incomplete one, never a substitute."""
         if native is None:
@@ -166,15 +212,26 @@ class LegalityService:
         if self._index is None or len(self._index) == 0:
             return [UNKNOWN] * len(points)
 
-        book = native.rulebook_for((country or DEFAULT_COUNTRY).upper())
+        code = (country or DEFAULT_COUNTRY).upper()
+        # A point the anchors do not cover is not swept at all. Sweeping it would find
+        # nothing and report legal, which is the same answer a genuinely clear space
+        # gets and therefore indistinguishable from one that was actually checked.
+        inside = [i for i, (lat, lon) in enumerate(points) if self.covers(lat, lon, country=code)]
+        out: list[LegalVerdict] = [OUTSIDE_COVERAGE] * len(points)
+        if not inside:
+            return out
+
+        book = native.rulebook_for(code)
         findings = native.legal_evaluate_many(
             book,
             native.Manoeuvre.PARKING,
             self._index,
-            points,
-            contexts or [],
+            [points[i] for i in inside],
+            [contexts[i] for i in inside] if contexts else [],
         )
-        return [_to_verdict(f) for f in findings]
+        for position, finding in zip(inside, findings, strict=True):
+            out[position] = _to_verdict(finding)
+        return out
 
     def evaluate_one(
         self, lat: float, lon: float, *, country: str | None = None, context: object | None = None
@@ -184,7 +241,10 @@ class LegalityService:
             return _NOT_BUILT
         if self._index is None or len(self._index) == 0:
             return UNKNOWN
-        book = native.rulebook_for((country or DEFAULT_COUNTRY).upper())
+        code = (country or DEFAULT_COUNTRY).upper()
+        if not self.covers(lat, lon, country=code):
+            return OUTSIDE_COVERAGE
+        book = native.rulebook_for(code)
         finding = native.legal_evaluate_at(
             book,
             native.Manoeuvre.PARKING,

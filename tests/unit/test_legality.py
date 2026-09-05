@@ -40,6 +40,9 @@ def service(tmp_path) -> LegalityService:
                 ("JUNCTION_WITH_CYCLE_PATH", 52.3900, 4.9000),
             ],
             country="NL",
+            # Coverage is part of the contract now, so the fixture has to declare
+            # the extent its anchors were collected over.
+            bbox=(52.30, 4.80, 52.45, 5.00),
         ),
         settings,
     )
@@ -96,7 +99,7 @@ def test_a_dutch_crossing_refusal_cites_its_article(service):
     verdict = service.evaluate_one(52.3800, 4.9000, country="NL")
     assert verdict.verdict == "prohibited"
     assert verdict.anchor == "pedestrian_crossing"
-    assert "RVV 1990 art. 23(1)(c)" == verdict.citation
+    assert verdict.citation == "RVV 1990 art. 23(1)(c)"
     assert verdict.required_cm == pytest.approx(500.0)
 
 
@@ -195,3 +198,70 @@ def test_an_anchor_kind_this_build_does_not_know_is_dropped_not_guessed(tmp_path
     assert service.available
     # The known anchor still works; the unknown one simply is not there.
     assert service.evaluate_one(HYDRANT_LAT, HYDRANT_LON, country="TR").verdict == "prohibited"
+
+
+# --------------------------------------------------------------- coverage
+
+def test_a_point_outside_the_ingested_area_is_unknown_not_legal(service):
+    """The bug this gate exists for.
+
+    An index holding 4,477 Amsterdam anchors is not empty, so an Istanbul point used to
+    sweep it, find nothing within a hundred metres because everything in it was two
+    thousand kilometres away, break no rules, and come back legal. Indistinguishable from
+    a space that was actually checked.
+    """
+    besiktas = service.evaluate_one(41.0422, 29.0094, country="TR")
+    assert besiktas.verdict == "unknown"
+    assert not besiktas.allowed
+    assert "outside the area" in besiktas.reason
+
+    berlin = service.evaluate_one(52.5200, 13.4050, country="DE")
+    assert berlin.verdict == "unknown"
+
+
+def test_the_covered_area_is_eroded_by_the_books_own_reach(service):
+    """A point just inside the edge has incomplete anchors, so it is honestly unknown.
+
+    Turkey reaches 100 m, the Netherlands 12 m, so the same point can be covered for one
+    book and not the other. That is not an inconsistency: it is the two books needing
+    different amounts of surrounding data to answer.
+    """
+    # 20 m inside the northern edge of the fixture box.
+    lat, lon = 52.45 - 0.00018, 4.90
+    assert service.covers(lat, lon, country="NL")
+    assert not service.covers(lat, lon, country="TR")
+
+
+def test_coverage_is_reported_so_a_caller_can_ask_before_trusting(service):
+    assert service.coverage_bbox == (52.30, 4.80, 52.45, 5.00)
+    assert service.covers(52.3700, 4.9000, country="NL")
+
+
+def test_a_batch_mixes_covered_and_uncovered_points_without_losing_order(service):
+    """The batch path filters uncovered points out of the sweep and puts them back."""
+    points = [
+        (HYDRANT_LAT, HYDRANT_LON),   # covered, on a hydrant
+        (41.0422, 29.0094),           # Istanbul, not covered
+        (CLEAR_LAT, CLEAR_LON),       # covered, clear
+    ]
+    verdicts = service.evaluate(points, country="TR")
+    assert len(verdicts) == 3
+    assert verdicts[0].verdict == "prohibited"
+    assert verdicts[1].verdict == "unknown"
+    assert verdicts[2].verdict == "legal"
+
+
+def test_anchors_with_no_recorded_extent_claim_nothing_beyond_the_index(tmp_path):
+    """An older cache has no bbox. It must not be treated as covering the planet."""
+    settings = Settings(data_dir=tmp_path)
+    anchor_ingest.save(
+        anchor_ingest.AnchorSet(
+            anchors=[("FIRE_HYDRANT", HYDRANT_LAT, HYDRANT_LON)], country="NL", bbox=None
+        ),
+        settings,
+    )
+    service = LegalityService(settings)
+    # Without an extent there is nothing to erode, so the index itself is the answer and
+    # the behaviour falls back to what it was before coverage existed.
+    assert service.covers(HYDRANT_LAT, HYDRANT_LON)
+    assert service.coverage_bbox is None

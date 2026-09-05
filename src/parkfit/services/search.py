@@ -133,6 +133,10 @@ class Candidate:
     fill_ratio: float = 1.0
     metered: bool = True
     source_name: str = ""
+    #: ISO 3166-1 alpha-2, taken from the facility record rather than guessed from
+    #: the coordinates. It picks the legal rulebook, and a wrong guess would apply
+    #: one country's road law to another country's streets.
+    country: str = "NL"
 
 
 @dataclass
@@ -328,6 +332,7 @@ class SearchEngine:
                         capacity=facility.capacity,
                         max_height_cm=facility.max_vehicle_height_cm,
                         source_name=facility.source_name,
+                        country=(facility.country or "NL"),
                     )
                 )
 
@@ -416,16 +421,25 @@ class SearchEngine:
         if not subjects:
             return candidates
 
-        verdicts = legality.evaluate([(c.lat, c.lon) for c in subjects])
+        # Grouped by country, because each country has its own book and a book is chosen
+        # per call. A search normally sits in one city and so one group, but a border
+        # town is a real place and judging Aachen under Dutch law would be wrong in a way
+        # nobody would notice from the output.
+        by_country: dict[str, list[Candidate]] = {}
+        for candidate in subjects:
+            by_country.setdefault((candidate.country or "NL").upper(), []).append(candidate)
+
         kept: list[Candidate] = []
         refused: dict[tuple[str, int], LegalVerdict] = {}
 
-        for candidate, verdict in zip(subjects, verdicts, strict=True):
-            candidate.legal = verdict
-            if verdict.is_unknown:
-                response.legality_unknown += 1
-            elif not verdict.allowed:
-                refused[candidate.key] = verdict
+        for country, group in by_country.items():
+            verdicts = legality.evaluate([(c.lat, c.lon) for c in group], country=country)
+            for candidate, verdict in zip(group, verdicts, strict=True):
+                candidate.legal = verdict
+                if verdict.is_unknown:
+                    response.legality_unknown += 1
+                elif not verdict.allowed:
+                    refused[candidate.key] = verdict
 
         for candidate in candidates:
             verdict = refused.get(candidate.key)

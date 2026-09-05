@@ -153,6 +153,27 @@ def ingest_roads(
     _print_ingest_table([result])
 
 
+@ingest_app.command("ispark")
+def ingest_ispark(
+    details: bool = typer.Option(
+        False, "--details", help="Also fetch tariffs, addresses and polygons (one call per site)."
+    ),
+    limit: int | None = typer.Option(None, help="Cap the detail pass, for a quick check."),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """Istanbul municipal parking: live free-space counts, tariffs and polygons."""
+    _setup_logging(verbose)
+    from parkfit.ingest.ispark import IsparkAdapter
+
+    results = []
+    with IsparkAdapter() as adapter:
+        results.append(adapter.run())
+        if details:
+            # One request per site, so it is opt-in and never on the live status path.
+            results.append(adapter.run_details(limit=limit))
+    _print_ingest_table(results)
+
+
 @ingest_app.command("anchors")
 def ingest_anchors(
     south: float = 52.33,
