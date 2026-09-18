@@ -1,3 +1,8 @@
+[![Watch: searching for parking near the NEMO Science Museum in a Volvo S60, the bays it rules out, and the fit check behind the result](docs/images/brag-poster.jpg)](docs/brag.mp4)
+
+**[Watch the 24-second walkthrough](docs/brag.mp4)** &middot; a real search, the spaces it refuses to
+offer you, and the measurement behind the one it does.
+
 ![CamToParkingSlot: your car, that bay, measured. 210,247 bays surveyed, 99.56 percent occupancy accuracy, 0.00 percent false fits, 170 ms search, 69 live cameras](docs/images/banner.png)
 
 # CamToParkingSlot
@@ -9,13 +14,6 @@
 That is a real Amsterdam bay and a real Volvo S60, both at their published dimensions,
 both from Dutch open data. The 36 cm is subtraction. Bay and car are drawn at one scale,
 so the picture cannot flatter the fit.
-
-### Twenty seconds of it
-
-[![Your car. That bay. Measured. A twenty-second look at the fit check, the spaces it rules out, and the measured results](docs/images/brag-poster.jpg)](docs/brag.mp4)
-
-The clip is committed at [`docs/brag.mp4`](docs/brag.mp4), so it works from a clone as well as
-from this page.
 
 Width is what is tight. The bay is 2.21 m, the S60 is 1.80 m across the bodywork, and a
 parallel bay asks for 5 cm of lateral margin in total, which leaves 36 cm. Length is
