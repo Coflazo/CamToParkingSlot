@@ -10,6 +10,13 @@ That is a real Amsterdam bay and a real Volvo S60, both at their published dimen
 both from Dutch open data. The 36 cm is subtraction. Bay and car are drawn at one scale,
 so the picture cannot flatter the fit.
 
+### Twenty seconds of it
+
+[![Your car. That bay. Measured. A twenty-second look at the fit check, the spaces it rules out, and the measured results](docs/images/brag-poster.jpg)](docs/brag.mp4)
+
+The clip is committed at [`docs/brag.mp4`](docs/brag.mp4), so it works from a clone as well as
+from this page.
+
 Width is what is tight. The bay is 2.21 m, the S60 is 1.80 m across the bodywork, and a
 parallel bay asks for 5 cm of lateral margin in total, which leaves 36 cm. Length is
 nowhere near as close, at 54 cm clear off each end.
