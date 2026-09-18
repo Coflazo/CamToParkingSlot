@@ -1,3 +1,8 @@
+[![Watch: searching for parking near the NEMO Science Museum in a Volvo S60, the bays it rules out, and the fit check behind the result](docs/images/brag-poster.jpg)](docs/brag.mp4)
+
+**[Watch the 24-second walkthrough](docs/brag.mp4)** &middot; a real search, the spaces it refuses to
+offer you, and the measurement behind the one it does.
+
 ![CamToParkingSlot: your car, that bay, measured. 210,247 bays surveyed, 99.56 percent occupancy accuracy, 0.00 percent false fits, 170 ms search, 69 live cameras](docs/images/banner.png)
 
 # CamToParkingSlot
