@@ -47,7 +47,7 @@ _RANK_PRECISION = (
     (20, 0.75),  # neighbourhood, suburb
     (16, 0.55),  # city, town
     (12, 0.40),  # county, state district
-    (0, 0.25),   # anything larger
+    (0, 0.25),  # anything larger
 )
 
 #: OSM classes that name a destination somebody actually drives to. A result in one of

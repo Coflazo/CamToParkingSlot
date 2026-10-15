@@ -34,6 +34,7 @@ def row(**overrides) -> dict[str, str]:
 
 # ------------------------------------------------------------------ parsing
 
+
 def test_a_real_row_parses():
     site = parse_row(row())
     assert site is not None
@@ -87,6 +88,7 @@ def test_a_comma_decimal_is_accepted():
 
 # ------------------------------------------------------------------- height
 
+
 def test_the_height_is_centimetres_not_metres():
     """The median across the file is 190, the classic French underground limit."""
     height, complaint = parse_height_cm("190")
@@ -129,6 +131,7 @@ def test_an_implausible_height_is_reported_as_a_problem_not_swallowed():
 
 
 # ------------------------------------------------------------------ the rest
+
 
 def test_free_is_only_free_when_the_column_says_one():
     """Telling a driver a paid car park is free is the more expensive mistake."""

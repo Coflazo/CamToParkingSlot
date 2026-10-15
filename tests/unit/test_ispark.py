@@ -50,6 +50,7 @@ def row(**overrides) -> dict:
 
 # ------------------------------------------------------------------ parsing
 
+
 def test_a_normal_row_parses_with_the_numbers_intact():
     reading = parse_reading(row())
     assert reading is not None
@@ -68,7 +69,9 @@ def test_coordinates_arrive_as_strings():
     assert reading.lon == pytest.approx(29.0915)
 
 
-@pytest.mark.parametrize("bad", [{"lat": ""}, {"lat": "0", "lng": "0"}, {"lng": "999"}, {"parkID": None}])
+@pytest.mark.parametrize(
+    "bad", [{"lat": ""}, {"lat": "0", "lng": "0"}, {"lng": "999"}, {"parkID": None}]
+)
 def test_a_site_with_no_usable_position_is_dropped(bad):
     """Zero, zero is in the Atlantic. Placing a car park there is worse than losing it."""
     assert parse_reading(row(**bad)) is None
@@ -99,6 +102,7 @@ def test_on_street_sites_stay_on_street():
 
 # ----------------------------------------------------- implausible readings
 
+
 def test_more_free_spaces_than_spaces_is_clamped_and_reported():
     reading = parse_reading(row(capacity=100, emptyCapacity=140))
     assert reading.empty == 100
@@ -126,14 +130,23 @@ def test_a_full_site_reports_occupied_not_unknown():
 def test_a_site_with_no_capacity_is_unknown_not_full():
     """Zero capacity means the feed said nothing, not that every space is taken."""
     reading = ParkReading(
-        park_id=1, name="x", lat=41.0, lon=29.0, capacity=0, empty=0,
-        park_type="", district="", work_hours="", free_minutes=0,
+        park_id=1,
+        name="x",
+        lat=41.0,
+        lon=29.0,
+        capacity=0,
+        empty=0,
+        park_type="",
+        district="",
+        work_hours="",
+        free_minutes=0,
     )
     assert reading.state is OccupancyState.UNKNOWN
     assert reading.ratio is None
 
 
 # ------------------------------------------------------------------ tariffs
+
 
 def test_the_first_hour_is_read_from_a_comma_decimal_ladder():
     """``float("110,00")`` raises and ``float("1.234,00")`` would read as 1.234."""
@@ -166,6 +179,7 @@ def test_an_unparseable_tariff_yields_no_number_rather_than_a_wrong_one(text):
 
 # ------------------------------------------------------------------- geometry
 
+
 def test_wkt_is_read_longitude_first_and_returned_latitude_first():
     """The swap that would put Istanbul in Somalia if it were missed."""
     ring = parse_wkt_polygon(
@@ -190,6 +204,7 @@ def test_a_malformed_coordinate_pair_is_skipped_not_fatal():
 
 
 # ----------------------------------------------------------------- timestamps
+
 
 def test_the_update_stamp_is_converted_from_istanbul_time_to_utc():
     """Turkey has been on permanent UTC+3 since 2016, with no daylight saving."""

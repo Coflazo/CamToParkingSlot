@@ -811,7 +811,9 @@ class NativeGraphProvider(RoutingProvider):
                     for k, v in payload["foot_edges"].items()
                 },
             )
-            log.info("loaded cached road graph %s: %d nodes (pure Python)", region.path.name, len(graph))
+            log.info(
+                "loaded cached road graph %s: %d nodes (pure Python)", region.path.name, len(graph)
+            )
             router = RoadRouter(graph)
 
         self._routers[region.path] = router

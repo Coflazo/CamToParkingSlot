@@ -229,9 +229,7 @@ class AutobahnAdapter(BaseAdapter):
             for identifier, record in seen.items():
                 facility = existing.get(identifier)
                 if facility is None:
-                    facility = ParkingFacility(
-                        source_name=self.meta.name, external_id=identifier
-                    )
+                    facility = ParkingFacility(source_name=self.meta.name, external_id=identifier)
                     existing[identifier] = facility
                     session.add(facility)
                     result.created += 1

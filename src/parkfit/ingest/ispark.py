@@ -67,9 +67,9 @@ BASE_URL = "https://api.ibb.gov.tr/ispark"
 #: Keeping the distinction matters: the legality engine applies statutory setbacks to
 #: kerbside space and not to a lot behind a barrier.
 PARK_TYPE_KIND = {
-    "KAPALI OTOPARK": FacilityKind.GARAGE,          # covered
-    "ACIK OTOPARK": FacilityKind.SURFACE_LOT,       # open
-    "YOL USTU": FacilityKind.ON_STREET_ZONE,        # on-street
+    "KAPALI OTOPARK": FacilityKind.GARAGE,  # covered
+    "ACIK OTOPARK": FacilityKind.SURFACE_LOT,  # open
+    "YOL USTU": FacilityKind.ON_STREET_ZONE,  # on-street
 }
 
 #: Turkish upper-case folding that ``str.upper()`` gets wrong.
@@ -323,9 +323,7 @@ class IsparkAdapter(BaseAdapter):
                 external_id = str(reading.park_id)
                 facility = existing.get(external_id)
                 if facility is None:
-                    facility = ParkingFacility(
-                        source_name=self.meta.name, external_id=external_id
-                    )
+                    facility = ParkingFacility(source_name=self.meta.name, external_id=external_id)
                     existing[external_id] = facility
                     session.add(facility)
                     result.created += 1

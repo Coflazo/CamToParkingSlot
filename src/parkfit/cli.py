@@ -154,9 +154,7 @@ def ingest_roads(
     from parkfit.ingest.osm import ingest_roads as build
 
     with OsmAdapter() as adapter:
-        result = build(
-            adapter, south=south, west=west, north=north, east=east, country=country
-        )
+        result = build(adapter, south=south, west=west, north=north, east=east, country=country)
     _print_ingest_table([result])
 
 
@@ -235,9 +233,7 @@ def ingest_anchors(
     from parkfit.services.legality import reset_legality_service
 
     with OsmAdapter() as adapter:
-        result = collect(
-            adapter, south=south, west=west, north=north, east=east, country=country
-        )
+        result = collect(adapter, south=south, west=west, north=north, east=east, country=country)
     # The service caches the built index for the process, so a fresh ingest in the same
     # process would otherwise keep answering from the old anchors.
     reset_legality_service()
