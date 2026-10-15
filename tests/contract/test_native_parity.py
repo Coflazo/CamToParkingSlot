@@ -78,7 +78,9 @@ def test_components_partition_matches(routers, profile):
 
     assert py_labels.keys() == cpp_labels.keys()
 
-    py_groups = {frozenset(n for n, c in py_labels.items() if c == g) for g in set(py_labels.values())}
+    py_groups = {
+        frozenset(n for n, c in py_labels.items() if c == g) for g in set(py_labels.values())
+    }
     cpp_groups = {
         frozenset(n for n, c in cpp_labels.items() if c == g) for g in set(cpp_labels.values())
     }
@@ -118,9 +120,7 @@ def test_costs_from_agrees_node_for_node(routers, profile):
     """
     python_router, native_router = routers
     py_costs, py_origin = python_router.costs_from(52.3000, 4.8000, profile, max_seconds=100000.0)
-    cpp_costs, cpp_origin = native_router.costs_from(
-        52.3000, 4.8000, profile, max_seconds=100000.0
-    )
+    cpp_costs, cpp_origin = native_router.costs_from(52.3000, 4.8000, profile, max_seconds=100000.0)
 
     assert py_origin == cpp_origin
     assert py_costs.keys() == cpp_costs.keys()
@@ -189,6 +189,7 @@ def test_the_provider_string_says_which_engine_answered(routers):
 
 # ------------------------------------------------------- batched fit checks
 
+
 def _vehicle():
     v = native.Vehicle()
     v.length_cm = 445.0
@@ -205,7 +206,7 @@ def _vehicle():
         (600.0, 220.0, "parallel"),
         (480.0, 200.0, "parallel"),
         (500.0, 250.0, "perpendicular"),
-        (430.0, 175.0, "perpendicular"),   # too small for this car
+        (430.0, 175.0, "perpendicular"),  # too small for this car
         (520.0, 230.0, "angled"),
         (600.0, 220.0, "unknown"),
     ],

@@ -51,6 +51,7 @@ def service(tmp_path) -> LegalityService:
 
 # ------------------------------------------------------------- degradation
 
+
 def test_no_anchor_cache_answers_unknown_not_legal(tmp_path):
     """The single most important property in this module."""
     empty = LegalityService(Settings(data_dir=tmp_path))
@@ -74,6 +75,7 @@ def test_unknown_is_never_counted_as_allowed():
 
 
 # ------------------------------------------------------------- the verdicts
+
 
 def test_standing_on_a_hydrant_is_prohibited_in_turkiye_and_legal_in_the_netherlands(service):
     """Not a bug: the two statutes genuinely differ.
@@ -132,6 +134,7 @@ def test_slack_reports_how_far_outside_the_rule_a_point_sits(service):
 
 
 # ------------------------------------------------------------- the rulebooks
+
 
 def test_france_answers_unknown_because_its_statute_is_not_transcribed(service):
     verdict = service.evaluate_one(HYDRANT_LAT, HYDRANT_LON, country="FR")
@@ -202,6 +205,7 @@ def test_an_anchor_kind_this_build_does_not_know_is_dropped_not_guessed(tmp_path
 
 # --------------------------------------------------------------- coverage
 
+
 def test_a_point_outside_the_ingested_area_is_unknown_not_legal(service):
     """The bug this gate exists for.
 
@@ -240,9 +244,9 @@ def test_coverage_is_reported_so_a_caller_can_ask_before_trusting(service):
 def test_a_batch_mixes_covered_and_uncovered_points_without_losing_order(service):
     """The batch path filters uncovered points out of the sweep and puts them back."""
     points = [
-        (HYDRANT_LAT, HYDRANT_LON),   # covered, on a hydrant
-        (41.0422, 29.0094),           # Istanbul, not covered
-        (CLEAR_LAT, CLEAR_LON),       # covered, clear
+        (HYDRANT_LAT, HYDRANT_LON),  # covered, on a hydrant
+        (41.0422, 29.0094),  # Istanbul, not covered
+        (CLEAR_LAT, CLEAR_LON),  # covered, clear
     ]
     verdicts = service.evaluate(points, country="TR")
     assert len(verdicts) == 3
@@ -268,6 +272,7 @@ def test_anchors_with_no_recorded_extent_claim_nothing_beyond_the_index(tmp_path
 
 
 # ------------------------------------------------ partial anchor coverage
+
 
 def test_a_rule_whose_anchor_was_never_collected_is_reported_not_hidden(tmp_path):
     """A covered region can still be missing a whole anchor kind.
@@ -327,7 +332,9 @@ def test_an_absent_anchor_that_was_looked_for_is_not_a_gap(service):
     about the world rather than a hole in the data.
     """
     queried = anchor_ingest.AnchorSet(
-        anchors=[], country="NL", bbox=(52.30, 4.80, 52.45, 5.00),
+        anchors=[],
+        country="NL",
+        bbox=(52.30, 4.80, 52.45, 5.00),
         queried_kinds=("FIRE_HYDRANT",),
     )
     assert "FIRE_HYDRANT" in queried.queried_kinds

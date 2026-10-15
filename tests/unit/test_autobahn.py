@@ -34,6 +34,7 @@ def record(**overrides) -> dict:
 
 # ------------------------------------------------------------------ parsing
 
+
 def test_a_normal_record_parses():
     area = parse_record(record(), "A8")
     assert area is not None
@@ -93,13 +94,14 @@ def test_a_record_with_no_name_falls_back_to_its_identifier():
 
 # ------------------------------------------------------------------ capacity
 
+
 @pytest.mark.parametrize(
     ("lines", "expected"),
     [
         (["PKW Stellplätze: 20", "LKW Stellplätze: 16"], (20, 16)),
         (["LKW Stellplätze: 65", "PKW Stellplätze: 0"], (0, 65)),
-        (["PKW Stellplaetze: 12"], (12, 0)),   # the label without the umlaut
-        (["pkw stellplätze : 7"], (7, 0)),     # case and spacing drift
+        (["PKW Stellplaetze: 12"], (12, 0)),  # the label without the umlaut
+        (["pkw stellplätze : 7"], (7, 0)),  # case and spacing drift
         ([], (0, 0)),
         (None, (0, 0)),
         (["nothing useful here"], (0, 0)),

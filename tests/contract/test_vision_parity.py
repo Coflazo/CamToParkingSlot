@@ -62,6 +62,7 @@ def assert_same(vehicles: list[DetectedVehicle], ppm: float = PPM) -> list:
 
 # ---------------------------------------------------------------- agreement
 
+
 def test_an_ordinary_gap_is_found_identically():
     # Two cars with 240 px between them: 6.0 m, comfortably a space.
     spaces = assert_same(kerb_row(100.0, 412.0))
@@ -91,6 +92,7 @@ def test_an_unusable_scale_yields_nothing():
 
 
 # --------------------------------------------------------------- the guards
+
 
 def test_a_gap_shorter_than_the_smallest_car_is_refused():
     # 120 px is 3.0 m, under the 4.2 m floor.
@@ -162,6 +164,7 @@ def test_vans_and_trucks_may_flank_a_space_but_do_not_set_the_scale():
 
 # ---------------------------------------------------- the shared primitives
 
+
 def test_the_scale_is_the_median_car_width_not_the_mean():
     """One box that swallowed two cars must not move every distance in the frame."""
     widths = [70.0, 72.0, 74.0, 400.0]  # the last is a merged detection
@@ -174,7 +177,9 @@ def test_the_scale_is_the_median_car_width_not_the_mean():
 
 def test_the_kerb_band_needs_at_least_two_vehicles():
     assert native.kerb_band([(0.0, 0.0, 72.0, 60.0, True, True)]) is None
-    band = native.kerb_band([(0.0, 0.0, 72.0, 60.0, True, True), (100.0, 0.0, 172.0, 60.0, True, True)])
+    band = native.kerb_band(
+        [(0.0, 0.0, 72.0, 60.0, True, True), (100.0, 0.0, 172.0, 60.0, True, True)]
+    )
     assert band is not None
     low, high = band
     assert low < 30.0 < high  # both centres are at y=30
@@ -188,6 +193,7 @@ def test_the_band_tolerance_has_a_floor_so_distant_cars_still_form_a_row():
 
 
 # ------------------------------------------------------- the randomised sweep
+
 
 def test_a_gap_running_off_the_frame_edge_is_refused():
     """Its far end is outside the picture, so its length is a lower bound.
@@ -236,8 +242,12 @@ def test_random_frames_agree(seed):
         vy = rng.uniform(120.0, 380.0)
         vehicles.append(
             DetectedVehicle(
-                x1=vx, y1=vy, x2=vx + rng.uniform(30.0, 100.0), y2=vy + rng.uniform(20.0, 80.0),
-                label=rng.choice(["car", "van", "bus", "motorcycle"]), score=0.7,
+                x1=vx,
+                y1=vy,
+                x2=vx + rng.uniform(30.0, 100.0),
+                y2=vy + rng.uniform(20.0, 80.0),
+                label=rng.choice(["car", "van", "bus", "motorcycle"]),
+                score=0.7,
             )
         )
 
