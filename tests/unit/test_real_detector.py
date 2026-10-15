@@ -40,3 +40,14 @@ def test_matches_torch_one_cycle_cosine_halfway_down():
 def test_fractions_outside_the_budget_are_clamped():
     assert one_cycle_lr(-0.5, 1.0) == one_cycle_lr(0.0, 1.0)
     assert one_cycle_lr(1.7, 1.0) == one_cycle_lr(1.0, 1.0)
+
+
+def test_the_report_names_its_budget_in_the_unit_that_reads():
+    from parkfit.ml.train.real_detector import RealTrainReport
+
+    def line(seconds):
+        return RealTrainReport(trained=True, time_budget_s=seconds).describe().splitlines()[0]
+
+    assert "within a 15 s budget" in line(15.0)
+    assert "within a 20 min budget" in line(1200.0)
+    assert "budget" not in line(0.0)

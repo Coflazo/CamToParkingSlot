@@ -282,6 +282,17 @@ The higher-resolution run is unfinished rather than disproven. 120 epochs at 960
 reached loss 3.09 against 1.36 at the lower resolution and scored zero, which is what a
 quarter of the updates spread over four times the grid cells looks like.
 
+A second attempt started from the finished 512x288 weights instead of the ImageNet trunk,
+since every layer is convolutional and the same weights run at any input size. It trained
+on the same 577 frames for a fixed 20 minutes on a Kaggle T4, 21 seconds an epoch, and was
+scored against the same twelve held-out cameras. The head start was worth less than it
+sounds. Box sizes are learned in input pixels and the heatmap peaks widen with the car, so
+at 960x544 every target is about 1.9 times what the model had learned, and the first epoch
+lost 8.89. After 57 epochs the loss was 2.79, below the 3.09 the cold run ended at after
+120, and the held-out cameras still scored zero precision and zero recall
+([`detector_real_hires.json`](docs/architecture/detector_real_hires.json)). So a short warm
+start does not rescue the higher resolution; whether a full-length run would is still open.
+
 None of this reaches a driver. Occupancy served to users comes from operator feeds,
 municipal sensors and the classifier above.
 

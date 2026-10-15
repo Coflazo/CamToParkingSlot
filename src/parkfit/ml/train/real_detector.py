@@ -94,7 +94,11 @@ class RealTrainReport:
         if not self.trained:
             return f"not trained: {self.reason}"
         start = f", fine-tuned from {self.init_weights}" if self.init_weights else ""
-        budget = f" within a {self.time_budget_s / 60:.0f} min budget" if self.time_budget_s else ""
+        budget = ""
+        if self.time_budget_s:
+            minutes = self.time_budget_s / 60
+            span = f"{minutes:.0f} min" if minutes >= 2 else f"{self.time_budget_s:.0f} s"
+            budget = f" within a {span} budget"
         return (
             f"{self.parameters:,} parameters ({self.backbone} trunk) on {self.device}{start}, "
             f"{self.epochs} epochs at {self.input_width}x{self.input_height}{budget}, "
@@ -321,7 +325,7 @@ def train_real(
 
     model = (build_pretrained_model() if backbone == "pretrained" else build_model()).to(device)
     if init_weights is not None:
-        model.load_state_dict(torch.load(init_weights, map_location=device))
+        model.load_state_dict(torch.load(init_weights, map_location=device, weights_only=True))
     parameters = sum(p.numel() for p in model.parameters())
     optimiser = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
     steps_per_epoch = max(1, (len(train_frames) + batch_size - 1) // batch_size)
