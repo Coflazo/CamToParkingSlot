@@ -1030,6 +1030,10 @@ def detect_train_real(
     height: int = typer.Option(544, help="Model input height."),
     out: str = typer.Option("data/models/detector_real.pt"),
     report_path: str = typer.Option("docs/architecture/detector_real.json"),
+    init_weights: str = typer.Option("", help="Start from these weights (any input size)."),
+    time_budget: float = typer.Option(
+        0.0, help="Stop after this many minutes; --epochs is then a cap."
+    ),
 ) -> None:
     """Train the detector on real frames and score it on cameras it has never seen."""
     import pathlib as _pathlib
@@ -1048,6 +1052,8 @@ def detect_train_real(
         width=width,
         height=height,
         weights_path=_pathlib.Path(out),
+        init_weights=_pathlib.Path(init_weights) if init_weights else None,
+        time_budget_s=time_budget * 60 if time_budget else None,
     )
     if not report.trained:
         console.print(f"[yellow]{report.describe()}[/yellow]")

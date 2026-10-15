@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -39,6 +40,28 @@ from parkfit.ml.train.detector import (
 log = logging.getLogger(__name__)
 
 DEFAULT_REAL_WEIGHTS = DEFAULT_WEIGHTS.parent / "detector_real.pt"
+
+
+def one_cycle_lr(
+    fraction: float,
+    max_lr: float,
+    pct_start: float = 0.3,
+    div_factor: float = 25.0,
+    final_div_factor: float = 1e4,
+) -> float:
+    """OneCycleLR's cosine shape, indexed by the fraction of training done instead of the step.
+
+    A run with a wall-clock budget cannot know its step count up front, so it asks for the
+    rate at the share of its budget already spent. The defaults are OneCycleLR's own, which
+    keeps a budgeted run comparable to the step-counted runs before it.
+    """
+    start = max_lr / div_factor
+    floor = start / final_div_factor
+    f = min(max(fraction, 0.0), 1.0)
+    if f < pct_start:
+        return start + (max_lr - start) * (1 - math.cos(math.pi * f / pct_start)) / 2
+    done = (f - pct_start) / (1 - pct_start)
+    return floor + (max_lr - floor) * (1 + math.cos(math.pi * done)) / 2
 
 
 @dataclass
@@ -64,13 +87,21 @@ class RealTrainReport:
     per_class: dict[str, float] = field(default_factory=dict)
     peak_vram_mb: float = 0.0
     weights_path: str = ""
+    init_weights: str = ""
+    time_budget_s: float = 0.0
 
     def describe(self) -> str:
         if not self.trained:
             return f"not trained: {self.reason}"
+        start = f", fine-tuned from {self.init_weights}" if self.init_weights else ""
+        budget = ""
+        if self.time_budget_s:
+            minutes = self.time_budget_s / 60
+            span = f"{minutes:.0f} min" if minutes >= 2 else f"{self.time_budget_s:.0f} s"
+            budget = f" within a {span} budget"
         return (
-            f"{self.parameters:,} parameters ({self.backbone} trunk) on {self.device}, "
-            f"{self.epochs} epochs at {self.input_width}x{self.input_height}, "
+            f"{self.parameters:,} parameters ({self.backbone} trunk) on {self.device}{start}, "
+            f"{self.epochs} epochs at {self.input_width}x{self.input_height}{budget}, "
             f"{self.train_frames} real train frames ({self.train_boxes} boxes), "
             f"held out {', '.join(self.holdout_cameras)} "
             f"({self.test_frames} frames, {self.test_boxes} boxes)\n"
@@ -242,8 +273,16 @@ def train_real(
     backbone: str = "pretrained",
     width: int = 960,
     height: int = 544,
+    init_weights: Path | None = None,
+    time_budget_s: float | None = None,
 ) -> RealTrainReport:
-    """Fit the detector on teacher-labelled real frames and score it on unseen cameras."""
+    """Fit the detector on teacher-labelled real frames and score it on unseen cameras.
+
+    ``init_weights`` starts from a saved state dict instead of the ImageNet trunk; every layer
+    is convolutional, so weights trained at one input size load at another. With
+    ``time_budget_s`` the run stops when the budget is spent and the learning rate follows
+    ``one_cycle_lr`` over the budget, so it still ends annealed; ``epochs`` is then a cap.
+    """
     try:
         import torch
     except ImportError:
@@ -285,11 +324,17 @@ def train_real(
     )
 
     model = (build_pretrained_model() if backbone == "pretrained" else build_model()).to(device)
+    if init_weights is not None:
+        model.load_state_dict(torch.load(init_weights, map_location=device, weights_only=True))
     parameters = sum(p.numel() for p in model.parameters())
     optimiser = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
     steps_per_epoch = max(1, (len(train_frames) + batch_size - 1) // batch_size)
-    schedule = torch.optim.lr_scheduler.OneCycleLR(
-        optimiser, max_lr=learning_rate, total_steps=epochs * steps_per_epoch
+    schedule = (
+        None
+        if time_budget_s
+        else torch.optim.lr_scheduler.OneCycleLR(
+            optimiser, max_lr=learning_rate, total_steps=epochs * steps_per_epoch
+        )
     )
 
     report = RealTrainReport(
@@ -306,19 +351,31 @@ def train_real(
         test_boxes=sum(len(f.boxes) for f in test_frames),
         holdout_cameras=sorted(holdout_cameras),
         weights_path=str(weights_path),
+        init_weights=str(init_weights) if init_weights is not None else "",
+        time_budget_s=float(time_budget_s or 0.0),
     )
 
     if device == "cuda":
         torch.cuda.reset_peak_memory_stats()
 
     order = np.arange(len(train_frames))
+    began = time.perf_counter()
+    out_of_time = False
     for epoch in range(epochs):
         model.train()
         rng.shuffle(order)
         started = time.perf_counter()
         running = 0.0
+        steps = 0
 
         for start in range(0, len(order), batch_size):
+            if time_budget_s:
+                spent = (time.perf_counter() - began) / time_budget_s
+                if spent >= 1.0:
+                    out_of_time = True
+                    break
+                for group in optimiser.param_groups:
+                    group["lr"] = one_cycle_lr(spent, learning_rate)
             index = order[start : start + batch_size]
             images, heat, size, offset, mask = _augment(
                 tr_images[index],
@@ -351,18 +408,25 @@ def train_real(
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
             optimiser.step()
-            schedule.step()
+            if schedule is not None:
+                schedule.step()
             running += loss.detach().item()
+            steps += 1
 
-        mean_loss = running / steps_per_epoch
-        report.losses.append(round(mean_loss, 5))
-        log.info(
-            "epoch %d/%d loss %.4f (%.1fs)",
-            epoch + 1,
-            epochs,
-            mean_loss,
-            time.perf_counter() - started,
-        )
+        if steps:
+            mean_loss = running / steps
+            report.losses.append(round(mean_loss, 5))
+            report.epochs = epoch + 1
+            log.info(
+                "epoch %d/%d loss %.4f (%.1fs)",
+                epoch + 1,
+                epochs,
+                mean_loss,
+                time.perf_counter() - started,
+            )
+        if out_of_time:
+            log.info("time budget spent after %d epochs", report.epochs)
+            break
 
     weights_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(model.state_dict(), weights_path)
