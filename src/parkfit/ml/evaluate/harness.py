@@ -340,7 +340,11 @@ def evaluate_search_latency(*, runs: int = 12) -> EvaluationResult:
             pass
 
         @staticmethod
-        def geocode_one(query: str, *, city: str | None = None) -> Destination | None:
+        def geocode_one(
+            query: str, *, city: str | None = None, country: str | None = None
+        ) -> Destination | None:
+            # Same signature as HybridGeocoder.geocode_one: search passes the country since
+            # it learned four of them. Every evaluation fixture is Dutch, so it is unused.
             coordinates = known_destinations.get(query)
             if coordinates is None:
                 return None
